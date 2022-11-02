@@ -85,7 +85,7 @@ def model(config,training_data,test_data):
     #train the estimator
     predictor=estimator.train(training_data=training_data)
     if type(test_data)==gluonts.dataset.split.TestData:
-        
+      
         forecast_it, ts_it = make_evaluation_predictions(
         dataset=test_data,  # test dataset
         predictor=predictor,  # predictor
@@ -131,13 +131,13 @@ def preprocessing(config,df,check_count=False,output_type="PD"):
         #correct_values_dict={k:v for k, v in count_dict.items() if v == max(count_dict.values())}
         #print(correct_values_dict)
         return df,missing_values_dict
-    if output_type in ['PD','LD']:
+    if output_type in ['PD','LD','corrected_df']:
         #Create a DataFrame Blueprint
         correctly_spaced_index=pd.date_range(start=config.train_start_time, end=config.test_end_time,freq="W-SUN")
         correctly_spaced_location_df=pd.DataFrame(index=correctly_spaced_index)
         correctly_spaced_df=pd.DataFrame()
         location_list=df.loc[:,'location'].unique()
-        location_list=['LK Bad Dürkheim']
+        #location_list=['LK Bad Dürkheim','SK Speyer', "LK Emsland"]
         for location in location_list:
             temporary_df=correctly_spaced_location_df.join(df.loc[df.location==location])
             temporary_df['location']=temporary_df['location'].fillna(location)
@@ -147,6 +147,8 @@ def preprocessing(config,df,check_count=False,output_type="PD"):
             df=PandasDataset.from_long_dataframe(dataframe=correctly_spaced_df,item_id='location', target="value",freq="W-SUN")
         if output_type =="LD":
             df=ListDataset([{"start": min(correctly_spaced_index),"target": correctly_spaced_df.loc[correctly_spaced_df.location == x,'value']} for x in location_list],freq=config.freq)
+        if output_type=="corrected_df":
+            return correctly_spaced_df
     return df
 
 def data_split(config,df,test_pairs=True):
