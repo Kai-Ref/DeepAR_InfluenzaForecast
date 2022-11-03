@@ -1,7 +1,7 @@
 import matplotlib
 import pandas as pd
 from gluonts.mx import DeepAREstimator
-from Configuration import Configuration
+from PythonFiles.Configuration import Configuration
 from gluonts.dataset.common import ListDataset
 from gluonts.dataset.pandas import PandasDataset
 from gluonts.evaluation.backtest import make_evaluation_predictions
@@ -76,6 +76,11 @@ def plot_dataset_splitting(original_dataset, training_dataset, test_pairs):
 
 
 def model(config,training_data,test_data):
+    """
+    This function defines the estimator based on the attributes set in Configuration.py. Then this estimator is fit with
+    the given training_data and the forecasts, aswell as the true values for the test_data are calculated via the 
+    make_evaluation_predictions function from gluonts. 
+    """
     #defining the estimator
     estimator = DeepAREstimator(freq=config.freq,
     context_length=config.context_length,
@@ -113,10 +118,14 @@ def model(config,training_data,test_data):
     
 
 def preprocessing(config,df,check_count=False,output_type="PD"):
+    """
+    This function processes the data into either a correctly spaced pd.DataFrame, a PandasDataset, a ListDataset or
+    a pd.Dataframe where only the index has been set.
+    We also have the option to receive an output of the count of each location, with fewer observations than the maximum
+    observations within the training and testing period.
+    """
     df['date']=pd.to_datetime(df['date'])
-    #df=df.pivot(index='date', columns='location', values='value')
     df=df.set_index('date')
-    #df=df.drop(columns=['year','Unnamed: 0'])
     if check_count:
         count_dict={}
         for location in df.location.unique():
@@ -127,10 +136,8 @@ def preprocessing(config,df,check_count=False,output_type="PD"):
         print('LK mit weniger als'+ str(max(count_dict.values())))
         missing_values_dict={k:v for k, v in count_dict.items() if v < max(count_dict.values())}
         print(missing_values_dict)
-        #print('ORTE MIT VOLLSTÄNDIGEN DATEN')
-        #correct_values_dict={k:v for k, v in count_dict.items() if v == max(count_dict.values())}
-        #print(correct_values_dict)
         return df,missing_values_dict
+    
     if output_type in ['PD','LD','corrected_df']:
         #Create a DataFrame Blueprint
         correctly_spaced_index=pd.date_range(start=config.train_start_time, end=config.test_end_time,freq="W-SUN")
@@ -152,6 +159,12 @@ def preprocessing(config,df,check_count=False,output_type="PD"):
     return df
 
 def data_split(config,df,test_pairs=True):
+    """
+    This function performs a data split into a training set and a testing set, this split is based upon the training and testing
+    times set within the Configuration.py File. 
+    We differentiate between a split performed via the gluonts split module (test_pairs==True) or a direct assignment into 
+    ListDatasets (test_pairs==False).
+    """
     df=df.copy()
     start=df.loc[(df.index>=config.train_start_time)].index[0]
     if not test_pairs:
