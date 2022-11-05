@@ -9,6 +9,7 @@ from gluonts.dataset.split import split
 import gluonts
 from gluonts.dataset.util import to_pandas
 import matplotlib.pyplot as plt
+from datetime import datetime
 
 from gluonts.transform import (
     AddAgeFeature,
@@ -148,7 +149,7 @@ def preprocessing(config,df,check_count=False,output_type="PD"):
         for location in location_list:
             temporary_df=correctly_spaced_location_df.join(df.loc[df.location==location])
             temporary_df['location']=temporary_df['location'].fillna(location)
-            temporary_df['age_group']=temporary_df['age_group'].fillna("00+")
+            #temporary_df['age_group']=temporary_df['age_group'].fillna("00+")
             correctly_spaced_df=pd.concat([correctly_spaced_df, temporary_df])
         if output_type == "PD":
             df=PandasDataset.from_long_dataframe(dataframe=correctly_spaced_df,item_id='location', target="value",freq="W-SUN")
@@ -158,6 +159,20 @@ def preprocessing(config,df,check_count=False,output_type="PD"):
             return correctly_spaced_df
     return df
 
+def plot_prob_forecasts(ts_entry, forecast_entry,test_data,title=""):
+    plot_length = 104
+    prediction_intervals = (50.0, 90.0)
+    legend = ['train_set observations',"test_set observations", "median prediction"] + [f"{k}% prediction interval" for k in prediction_intervals][::-1]
+
+    fig, ax = plt.subplots(1, 1, figsize=(10, 7))
+    to_pandas(test_data).to_timestamp().plot(color="r")
+    ts_entry[-plot_length:].plot(ax=ax)  # plot the time series
+    forecast_entry.plot(prediction_intervals=prediction_intervals, color="g")
+    plt.grid(which="both")
+    plt.title(title)
+    plt.legend(legend, loc="upper left")
+    plt.show()
+    
 def data_split(config,df,test_pairs=True):
     """
     This function performs a data split into a training set and a testing set, this split is based upon the training and testing
@@ -185,3 +200,46 @@ def data_split(config,df,test_pairs=True):
         test_pairs = test_template.generate_instances(prediction_length=config.prediction_length,windows=config.windows,)
 
         return training_data,test_pairs
+    
+def make_one_ts_prediction(config,df,location="LK Bad Dürkheim"):
+    #Process the df into a uniformly spaced df
+    one_ts_df=df.loc[df.location==location,["value",'location','date']]
+    one_ts_df=preprocessing(config,one_ts_df,check_count=False,output_type="corrected_df")
+    #seperate the intervals for training and testing
+    train_set=one_ts_df.loc[(one_ts_df.index<=config.test_end_time) &(one_ts_df.index>=config.train_start_time),:]
+    test_set=one_ts_df.loc[(one_ts_df.index>=config.train_start_time) &(one_ts_df.index<=config.test_end_time),:]
+    #select the correct dates for splitting within the test data for each window
+    window_dates=[]
+    for window in range(1,config.windows):
+        unique_weeks=test_set.index.unique()
+        selected_split_week=unique_weeks[-window*config.prediction_length:-window*config.prediction_length +1]
+        window_dates.append(datetime(selected_split_week.year[0],selected_split_week.month[0],selected_split_week.day[0]))
+    #also add the last date available
+    window_dates.append(config.test_end_time)
+    window_dates.sort()
+    #define the list of dfs of each testing window
+    test_windows=[test_set.loc[test_set.index<window_date,:] for window_date in window_dates]
+    #Format the train and test_set into a PandasDataset
+    train_set=PandasDataset.from_long_dataframe(dataframe=train_set,item_id='location', target="value",freq="W-SUN")
+    test_set=PandasDataset(test_windows, target="value",freq=config.freq)
+    #train and evaluate the model
+    forecasts,tss=model(config,train_set,test_set)
+    #plot the forecasts
+    fig, ax = plt.subplots(1, 1, figsize=(10, 7))
+    plt.title(f'{location}')
+    #first plot the time series as a whole (x-axis: Date, y-axis: influenza-values)
+    plt.plot((one_ts_df.loc[(one_ts_df['location']==location)&(one_ts_df.index<=config.test_end_time) &(one_ts_df.index>=config.train_start_time)].index),
+             one_ts_df.loc[(one_ts_df['location']==location)&(one_ts_df.index<=config.test_end_time) &(one_ts_df.index>=config.train_start_time),'value'])
+    plt.grid(which="both")
+    #define the colors to use for each different window
+    color=["g","r","purple",'black','yellow','grey']
+    for k in range(0,config.windows):
+        ts_entry=tss[k]
+        forecast_entry=forecasts[k]
+        prediction_intervals = (50.0, 90.0)
+        legend = ['train_set observations',"median prediction"] + [f"{k}% prediction interval" for k in prediction_intervals][::-1]
+        forecast_entry.plot(prediction_intervals=prediction_intervals, color=color[k])
+    plt.grid(which="both")
+    plt.show()
+    return forecasts,tss
+    
