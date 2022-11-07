@@ -206,7 +206,7 @@ def make_one_ts_prediction(config,df,location="LK Bad Dürkheim"):
     one_ts_df=df.loc[df.location==location,["value",'location','date']]
     one_ts_df=preprocessing(config,one_ts_df,check_count=False,output_type="corrected_df")
     #seperate the intervals for training and testing
-    train_set=one_ts_df.loc[(one_ts_df.index<=config.test_end_time) &(one_ts_df.index>=config.train_start_time),:]
+    train_set=one_ts_df.loc[(one_ts_df.index<=config.train_end_time) &(one_ts_df.index>=config.train_start_time),:]
     test_set=one_ts_df.loc[(one_ts_df.index>=config.train_start_time) &(one_ts_df.index<=config.test_end_time),:]
     #select the correct dates for splitting within the test data for each window
     window_dates=[]
