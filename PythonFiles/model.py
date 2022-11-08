@@ -1,57 +1,12 @@
-import matplotlib
 import pandas as pd
+import matplotlib.pyplot as plt
+from datetime import datetime
 from gluonts.mx import DeepAREstimator
-from PythonFiles.Configuration import Configuration
 from gluonts.dataset.common import ListDataset
 from gluonts.dataset.pandas import PandasDataset
 from gluonts.evaluation.backtest import make_evaluation_predictions
-from gluonts.dataset.split import split
-import gluonts
+from gluonts.dataset.split import split,TestData
 from gluonts.dataset.util import to_pandas
-import matplotlib.pyplot as plt
-from datetime import datetime
-
-from gluonts.transform import (
-    AddAgeFeature,
-    AddObservedValuesIndicator,
-    Chain,
-    ExpectedNumInstanceSampler,
-    InstanceSplitter,
-    SetFieldIfNotPresent,
-)
-
-def create_transformation(config):
-    return Chain(
-        [
-            AddObservedValuesIndicator(
-                target_field=FieldName.TARGET,
-                output_field=FieldName.OBSERVED_VALUES,
-            ),
-            AddAgeFeature(
-                target_field=FieldName.TARGET,
-                output_field=FieldName.FEAT_AGE,
-                pred_length=config.prediction_length,
-                log_scale=True,
-            ),
-            InstanceSplitter(
-                target_field=FieldName.TARGET,
-                is_pad_field=FieldName.IS_PAD,
-                start_field=FieldName.START,
-                forecast_start_field=FieldName.FORECAST_START,
-                instance_sampler=ExpectedNumInstanceSampler(
-                    num_instances=1,
-                    min_future=config.prediction_length,
-                ),
-                past_length=config.context_length,
-                future_length=config.prediction_length,
-                time_series_fields=[
-                    FieldName.FEAT_AGE,
-                    FieldName.FEAT_DYNAMIC_REAL,
-                    FieldName.OBSERVED_VALUES,
-                ],
-            ),
-        ]
-    )
 
 #IMPLEMENTED FROM Splitting
 def highlight_entry(entry, color):
@@ -90,8 +45,7 @@ def model(config,training_data,test_data):
     cell_type=config.cell_type,trainer=config.trainer,distr_output=config.distr_output)
     #train the estimator
     predictor=estimator.train(training_data=training_data)
-    if type(test_data)==gluonts.dataset.split.TestData:
-      
+    if type(test_data)==TestData:
         forecast_it, ts_it = make_evaluation_predictions(
         dataset=test_data,  # test dataset
         predictor=predictor,  # predictor
