@@ -13,7 +13,7 @@ class Configuration:
         #deepAR parameters
         self.freq="W-SUN"
         self.context_length=52#in number of weeks
-        self.prediction_length=52#in number of weeks ->1 Week (104 Test Windows), 13W(8TW), 26W(4TW), 52W(2TW), 104W(1TW)
+        self.prediction_length=26#in number of weeks ->1 Week (104 Test Windows), 13W(8TW), 26W(4TW), 52W(2TW), 104W(1TW)
         self.windows=int(104/self.prediction_length)
         self.num_layers=2
         self.num_cells=128
