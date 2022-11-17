@@ -17,6 +17,7 @@ def highlight_entry(entry, color):
     end = entry["start"] + len(entry["target"])
     plt.axvspan(start, end, facecolor=color, alpha=0.2)
 
+    
 def plot_dataset_splitting(original_dataset, training_dataset, test_pairs):
     for original_entry, train_entry in zip(original_dataset, training_dataset):
         to_pandas(original_entry).plot()
@@ -60,8 +61,9 @@ def model(config, training_data, test_data):
     forecasts = list(forecast_it)
     tss = list(ts_it)
     return forecasts, tss
-    
-def split_forecasts_by_week(config, forecasts, tss, locations, week):
+
+
+def split_forecasts_by_week(config, forecasts, tss, locations, week, equal_time_frame=False):
     """
     Splits up a Forecast-List into the forecasts by a given [week]-week ahead.
     Test values and forecasts are results of calling model(), whilst before a rolling window is applied.
@@ -71,35 +73,37 @@ def split_forecasts_by_week(config, forecasts, tss, locations, week):
     week_ahead_forecasts = []
     split_tss = []
     for location in locations:
+        if equal_time_frame:
+            # choose an index that sets the starting date of different week ahead within 1 and 4 week ahead to equal each other
+            first_time_point_of_location = windows_per_location + windows_per_location*locations.index(location) - ((-week) % 4) - 1
+            for_loop_end = first_time_point_of_location - windows_per_location + ((-week) % 4) + week
+        else:
+            # define the index of the time wise first forecast point
+            first_time_point_of_location = windows_per_location + windows_per_location*locations.index(location)-1
+            for_loop_end = first_time_point_of_location - windows_per_location
         start_date_list = []
         # Append the True underlying values (of the complete test window) to split_tss for the current location
-        split_tss.append(tss[0 + locations.index(location)*windows_per_location])
-        
+        split_tss.append(tss[windows_per_location*locations.index(location)])
         # Add the timewise first (and index-wise last) [num_samples]-arrays of the corresponding week to [weekly_samples_array]
-        weekly_samples_array = forecasts[windows_per_location + windows_per_location*locations.index(location) - 1].samples[:, (week-1):week]
-        
-        # Save the [start_date] of the time-wise first window and add it to [start_date_list]
-        start_date_list.append(forecasts[windows_per_location + windows_per_location*locations.index(location) - 1].start_date)
-        
-        for k in range(windows_per_location + windows_per_location*locations.index(location) - 2,
-                       0 + windows_per_location*locations.index(location) - 1, -1):
+        weekly_samples_array = forecasts[first_time_point_of_location].samples[:, (week-1):week]
+        for k in range(first_time_point_of_location - 1,
+                       for_loop_end, -1):
             # Reverse iterate through the windows of each location, as the time-wise first forecasts are last in the forecast-list
             # and concatenate the array with the corresponding values of each [week]-week ahead forecast
             weekly_samples_array = np.concatenate((weekly_samples_array, forecasts[k].samples[:, (week-1):week]), axis=1)
-            # also append the start_dates
-            start_date_list.append(forecasts[k].start_date)
         
-        # Save the correct starting time, determined by the minimal [start_date] of the location and the [week] parameter
-        start_date = pd.date_range(start=min(start_date_list).to_timestamp(), periods=week, freq=config.freq)[-1]
+        # Save the correct starting time, determined by the first [start_date] of the location and the [week] parameter
+        start_date = pd.date_range(start=forecasts[first_time_point_of_location].start_date.to_timestamp(), periods=week, freq=config.freq)[-1]
         # append the filtered [weekly_samples_array]-array and the correct [start_date] as a SampleForecast-Object for each location
         week_ahead_forecasts.append(
-            gluonts.model.forecast.SampleForecast(info=forecasts[0 + windows_per_location*locations.index(location)].info,
-                                                                          item_id=forecasts[0 + windows_per_location*locations.index(location)].item_id,
+                                    gluonts.model.forecast.SampleForecast(info=forecasts[first_time_point_of_location].info,
+                                                                          item_id=forecasts[first_time_point_of_location].item_id,
                                                                           samples=weekly_samples_array,
                                                                           start_date=pd.Period(start_date,freq=config.freq),
                                                  )
         )
     return week_ahead_forecasts, split_tss
+
 
 def preprocessing(config, df, check_count=False, output_type="PD"):
     """
@@ -141,6 +145,7 @@ def preprocessing(config, df, check_count=False, output_type="PD"):
             return correctly_spaced_df
     return df
 
+
 def plot_prob_forecasts(ts_entry, forecast_entry, test_data, title=""):
     plot_length = 104
     prediction_intervals = (50.0, 90.0)
@@ -154,6 +159,7 @@ def plot_prob_forecasts(ts_entry, forecast_entry, test_data, title=""):
     plt.title(title)
     plt.legend(legend, loc="upper left")
     plt.show()
+
     
 def data_split(config, df, test_pairs=True):
     """
@@ -165,23 +171,28 @@ def data_split(config, df, test_pairs=True):
     df = df.copy()
     start = df.loc[(df.index >= config.train_start_time)].index[0]
     if not test_pairs:
-        training_data = ListDataset([{"start": start, "target": df.loc[(df.index >= config.train_start_time) & (df.index <= config.train_end_time) & 
-                                            (df.location == x),config.target]}
+        training_data = ListDataset([{"start": start, "target": df.loc[(df.index >= config.train_start_time) &
+                                                                       (df.index <= config.train_end_time) &
+                                                                       (df.location == x),config.target]}
                                      for x in df.loc[:,'location'].unique()], freq=config.freq)
         
-        test_data = ListDataset([{"start": start, "target": df.loc[(df.index <= config.test_end_time) & (df.index >= config.train_start_time) & 
+        test_data = ListDataset([{"start": start, "target": df.loc[(df.index <= config.test_end_time) &
+                                                                   (df.index >= config.train_start_time) & 
                                                                    (df.location == x),config.target]}
                                  for x in df.loc[:, 'location'].unique()], freq=config.freq)
         return training_data, test_data
     else:
         # use the gluonts.split functionality
-        dataset = ListDataset([{"start": start, "target": df.loc[(df.index <= config.test_end_time) & (df.index >= config.train_start_time) & 
+        dataset = ListDataset([{"start": start, "target": df.loc[(df.index <= config.test_end_time) &
+                                                                 (df.index >= config.train_start_time) & 
                                                                  (df.location == x), config.target]}
                                for x in df.loc[:, 'location'].unique()], freq=config.freq)
 
         training_data, test_template = split(dataset, date=pd.Period(config.train_end_time, freq=config.freq))
-        test_pairs = test_template.generate_instances(prediction_length=config.prediction_length, windows=config.windows,)
+        test_pairs = test_template.generate_instances(prediction_length=config.prediction_length,
+                                                      windows=config.windows)
         return training_data, test_pairs
+
     
 def make_one_ts_prediction(config, df, location="LK Bad Dürkheim"):
     """
