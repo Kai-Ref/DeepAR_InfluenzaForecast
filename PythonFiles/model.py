@@ -3,54 +3,20 @@ import numpy as np
 import matplotlib.pyplot as plt
 from datetime import datetime
 import gluonts
-from gluonts.mx import DeepAREstimator
 from gluonts.dataset.common import ListDataset
 from gluonts.dataset.pandas import PandasDataset
 from gluonts.evaluation.backtest import make_evaluation_predictions
 from gluonts.dataset.split import split, TestData
 from gluonts.dataset.util import to_pandas
 
-#IMPLEMENTED FROM Splitting
-def highlight_entry(entry, color):
-    """ Highlights a given entry by a specified color."""
-    start = entry["start"]
-    end = entry["start"] + len(entry["target"])
-    plt.axvspan(start, end, facecolor=color, alpha=0.2)
 
-    
-def plot_dataset_splitting(original_dataset, training_dataset, test_pairs):
-    for original_entry, train_entry in zip(original_dataset, training_dataset):
-        to_pandas(original_entry).plot()
-        highlight_entry(train_entry, "red")
-        plt.legend(["sub dataset", "training dataset"], loc="upper left")
-        plt.show()
-
-    for original_entry in original_dataset:
-        for test_input, test_label in test_pairs:
-            to_pandas(original_entry).plot()
-            highlight_entry(test_input, "green")
-            highlight_entry(test_label, "blue")
-            plt.legend(["sub dataset", "test input", "test label"], loc="upper left")
-            plt.show()
-
-
-def model(config, training_data, test_data):
+def model(config, training_data, test_data, estimator):
     """
     This function defines the estimator based on the attributes set in Configuration.py.
     Then this estimator is fit with the given training_data and the forecasts,
     aswell as the true values for the test_data are calculated via the make_evaluation_predictions function from gluonts. 
     """
-    # Define the DeepAR-Estimator
-    estimator = DeepAREstimator(freq=config.freq,
-                                context_length=config.context_length,
-                                prediction_length=config.prediction_length,
-                                num_layers=config.num_layers,
-                                num_cells=config.num_cells,
-                                cell_type=config.cell_type,
-                                trainer=config.trainer,
-                                distr_output=config.distr_output,
-                                )
-    # Train and Test the estimator
+    # Train and Test the predictor
     predictor = estimator.train(training_data=training_data)
     forecast_it, ts_it = make_evaluation_predictions(
                          dataset=test_data,  
@@ -144,54 +110,6 @@ def preprocessing(config, df, check_count=False, output_type="PD"):
         if output_type == "corrected_df":
             return correctly_spaced_df
     return df
-
-
-def plot_prob_forecasts(ts_entry, forecast_entry, test_data, title=""):
-    plot_length = 104
-    prediction_intervals = (50.0, 90.0)
-    legend = ["train_set observations", "test_set observations", "median prediction"] + [f"{k}% prediction interval" for k in prediction_intervals][::-1]
-
-    fig, ax = plt.subplots(1, 1, figsize=(10, 7))
-    to_pandas(test_data).to_timestamp().plot(color="r")
-    ts_entry[-plot_length:].plot(ax=ax)  # plot the time series
-    forecast_entry.plot(prediction_intervals=prediction_intervals, color="g")
-    plt.grid(which="both")
-    plt.title(title)
-    plt.legend(legend, loc="upper left")
-    plt.show()
-
-    
-def data_split(config, df, test_pairs=True):
-    """
-    This function performs a data split into a training set and a testing set, this split is based upon the training and testing
-    times set within the Configuration.py File. 
-    We differentiate between a split performed via the gluonts split module (test_pairs==True) or a direct assignment into 
-    ListDatasets (test_pairs==False).
-    """
-    df = df.copy()
-    start = df.loc[(df.index >= config.train_start_time)].index[0]
-    if not test_pairs:
-        training_data = ListDataset([{"start": start, "target": df.loc[(df.index >= config.train_start_time) &
-                                                                       (df.index <= config.train_end_time) &
-                                                                       (df.location == x),config.target]}
-                                     for x in df.loc[:,'location'].unique()], freq=config.freq)
-        
-        test_data = ListDataset([{"start": start, "target": df.loc[(df.index <= config.test_end_time) &
-                                                                   (df.index >= config.train_start_time) & 
-                                                                   (df.location == x),config.target]}
-                                 for x in df.loc[:, 'location'].unique()], freq=config.freq)
-        return training_data, test_data
-    else:
-        # use the gluonts.split functionality
-        dataset = ListDataset([{"start": start, "target": df.loc[(df.index <= config.test_end_time) &
-                                                                 (df.index >= config.train_start_time) & 
-                                                                 (df.location == x), config.target]}
-                               for x in df.loc[:, 'location'].unique()], freq=config.freq)
-
-        training_data, test_template = split(dataset, date=pd.Period(config.train_end_time, freq=config.freq))
-        test_pairs = test_template.generate_instances(prediction_length=config.prediction_length,
-                                                      windows=config.windows)
-        return training_data, test_pairs
 
     
 def make_one_ts_prediction(config, df, location="LK Bad Dürkheim"):
