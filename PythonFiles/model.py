@@ -137,22 +137,58 @@ def make_one_ts_prediction(config, df, location="LK Bad Dürkheim"):
     train_set = PandasDataset.from_long_dataframe(dataframe=train_set, item_id='location', target="value", freq=config.freq)
     test_set = PandasDataset(test_windows, target="value", freq=config.freq)
     #train and evaluate the model
-    forecasts,tss = model(config, train_set, test_set)
+    forecasts,tss = model(config, train_set, test_set, config.deeparestimator)
     #plot the forecasts
     fig, ax = plt.subplots(1, 1, figsize=(10, 7))
     plt.title(f'{location}')
     #first plot the time series as a whole (x-axis: Date, y-axis: influenza-values)
-    plt.plot((one_ts_df.loc[(one_ts_df['location'] == location) & (one_ts_df.index <= config.test_end_time) & (one_ts_df.index >= config.train_start_time)].index),
-             one_ts_df.loc[(one_ts_df['location'] == location) & (one_ts_df.index <= config.test_end_time) & (one_ts_df.index >= config.train_start_time), 'value'])
+    plt.plot((one_ts_df.loc[(one_ts_df['location'] == location) &
+                            (one_ts_df.index <= config.test_end_time) &
+                            (one_ts_df.index >= config.train_start_time)].index),
+             one_ts_df.loc[(one_ts_df['location'] == location) &
+                           (one_ts_df.index <= config.test_end_time) &
+                           (one_ts_df.index >= config.train_start_time), 'value'])
     plt.grid(which="both")
     #define the colors to use for each different window
     color = ["g", "r", "purple", "black", "yellow", "grey"] * config.windows
     for k in range(0, config.windows):
         forecast_entry = forecasts[k]
         prediction_intervals = (50.0, 90.0)
-        legend = ["train_set observations", "median prediction"] + [f"{k}% prediction interval" for k in prediction_intervals][::-1]
+        legend = ["train_set observations", "median prediction"] +\
+                 [f"{k}% prediction interval" for k in prediction_intervals][::-1]
         forecast_entry.plot(prediction_intervals=prediction_intervals, color=color[k])
     plt.grid(which="both")
     plt.show()
     return forecasts, tss
+
+
+# Evaluation Plots
+
+
+def plot_coverage(config, evaluator_df_dict):
+    """
+    Given a dictionary, where the values consist of evaluation_df's, this function is going to create plots of the 4 different week-ahead coverages.  
+    However, the weekly performances have to be under the "item_id" with f.e. "aggregated {1}" for the 1 week-ahead metrics.
+    """
+    week_coverage_dict = {}
+    coverage_columns = [col for col in evaluator_df_dict[list(evaluator_df_dict.keys())[0]].columns if "Coverage" in col]
+    coverage_columns.remove("MAE_Coverage")
+    fig, axs = plt.subplots(nrows=2, ncols=2, figsize=(16, 9))
+    for week in range(1,5):
+        if week == 1:
+            plotnumber = (0, 0)
+        if week == 2:
+            plotnumber = (1, 0)
+        if week == 3:
+            plotnumber = (0, 1)
+        if week == 4:
+            plotnumber = (1, 1)
+        for key in evaluator_df_dict.keys():
+            week_coverage_dict[week] = evaluator_df_dict[key].loc[evaluator_df_dict[key].item_id.isin(["aggregated {"+ f"{week}" + "}"]), coverage_columns]
+            axs[plotnumber].plot([0.0, 1.0], [0.0, 1.0])
+            axs[plotnumber].scatter(config.quantiles, evaluator_df_dict[key].loc[evaluator_df_dict[key].item_id.isin(["aggregated {" + f"{week}" + "}"]), coverage_columns])
+            axs[plotnumber].plot(config.quantiles, evaluator_df_dict[key].loc[evaluator_df_dict[key].item_id.isin(["aggregated {" + f"{week}" + "}"]), coverage_columns].T, label=f"{key}")
+            axs[plotnumber].title.set_text(f"{week}-Week Ahead Coverage")
+            axs[plotnumber].legend()
+
     
