@@ -221,3 +221,5 @@ stopifnot(
   all.equal(c(residuals(hhh4fit)), residuals(glmnbfit),
             tolerance = 1e-6, check.attributes = FALSE)
 )
+library(surveillance)
+?hhh4
