@@ -10,6 +10,10 @@ df_sts <-sts(as.matrix(subset(df, select=-c(date))),
              start = c(2002, 1) , frequency = 52,
              neighbourhood = as.matrix(adjacentMatrix))
 
+plot(fluBYBW, type = observed ~ time)
+plot(df_sts, type = observed ~ time)
+
+
 ?hhh4
 
 
