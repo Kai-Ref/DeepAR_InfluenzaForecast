@@ -2,19 +2,13 @@ library(tidyr)
 library(surveillance)
 
 data <- read.csv("Influenza.csv")
-adjacentMatrix <- read.csv("AdjacentMatrix.csv", check.names=FALSE)
-rownames(adjacentMatrix) <- adjacentMatrix$X
-adjacentMatrix$X <- NULL
+adjacentMatrix <- read.csv("AdjacentMatrix.csv", check.names=FALSE,
+                           row.names='')
 df <- pivot_wider(data[c('value', 'date', 'location')], names_from = location, values_from = value)
 
 df_sts <-sts(as.matrix(subset(df, select=-c(date))),
              start = c(2002, 1) , frequency = 52,
              neighbourhood = as.matrix(adjacentMatrix))
-print(ncol(df))
-print(dim(as.matrix(subset(df, select=-c(date)))))
-print(dim(adjacentMatrix))
-print(colnames(df))  
-print(colnames(adjacentMatrix))
 
 ?hhh4
 
