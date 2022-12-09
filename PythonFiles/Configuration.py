@@ -1,6 +1,5 @@
 from datetime import datetime
-from gluonts.mx import Trainer, DeepAREstimator
-from gluonts.model.simple_feedforward import SimpleFeedForwardEstimator
+from gluonts.mx import Trainer, DeepAREstimator, SimpleFeedForwardEstimator
 from gluonts.mx.distribution import NegativeBinomialOutput
 
 class Configuration:
