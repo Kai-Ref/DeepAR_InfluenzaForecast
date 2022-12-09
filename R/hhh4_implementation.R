@@ -2,7 +2,7 @@ library(tidyr)
 library(surveillance)
 
 data <- read.csv("Influenza.csv")
-adjacentMatrix <- read.csv("AdjacentMatrix.csv")
+adjacentMatrix <- read.csv("AdjacentMatrix.csv", check.names=FALSE)
 rownames(adjacentMatrix) <- adjacentMatrix$X
 adjacentMatrix$X <- NULL
 df <- pivot_wider(data[c('value', 'date', 'location')], names_from = location, values_from = value)
