@@ -1,18 +1,32 @@
 library(tidyr)
 library(surveillance)
 
-data <- read.csv("Influenza.csv")
-adjacentMatrix <- read.csv("Notebooks/DataProcessing/AdjacentMatrix.csv", check.names=FALSE,
-                           row.names='')
+# Data for all states
+
+#   data <- read.csv("Notebooks/DataProcessing/influenza.csv")
+#   adjacentMatrix <- read.csv("Notebooks/DataProcessing/AdjacentMatrix.csv", check.names=FALSE,
+#                           row.names='')
+#   population_vector <- read.csv("Notebooks/DataProcessing/PopulationVector.csv",
+#                              check.names=FALSE, row.names = "Location")
+
+# For Developing purpose select only the BW data (faster computations)
+
+data <- read.csv("Notebooks/DataProcessing/BWDataset/influenzaBW.csv")
+adjacentMatrix <- read.csv("Notebooks/DataProcessing/BWDataset/AdjacentMatrixBW.csv",
+                           check.names=FALSE,row.names='Index')
+population_vector <- read.csv("Notebooks/DataProcessing/BWDataset/PopulationVectorBW.csv",
+                              check.names=FALSE, row.names = "Location")
+
+
 df <- pivot_wider(data[c('value', 'date', 'location')], names_from = location, values_from = value)
-population_vector <- t(read.csv("Notebooks/DataProcessing/PopulationVector.csv",
-                              check.names=FALSE, row.names = "Location"))
 df[is.na(df)] <- 0
 df_sts <-sts(as.matrix(subset(df, select=-c(date))),
              start = c(2002, 1) , frequency = 52,
              neighbourhood = as.matrix(adjacentMatrix))#,
-             #population = population_vector)
-#check if dimensions are matching -> they seem to be
+             #population = as.matrix(t(population_vector)))
+
+all.equal(colnames(subset(df, select=-c(date))), colnames(t(population_vector)))
+#check if dimensions are matching -> they seem to be matching
 print(dim(population_vector))
 print(dim(df))
 # check if colnames are matching -> they are
@@ -21,10 +35,7 @@ for (col in colnames(subset(df, select=-c(date)))){
   if (col %!in% colnames(population_vector)){
     print(col) 
 }}
-print(colnames(adjacentMatrix))
-print(colnames(population_vector))
-print(observed(df_sts))
-print(dim(population_vector))
+
 data("fluBYBW")
 print(population(fluBYBW))
 plot(fluBYBW, type = observed ~ time)
