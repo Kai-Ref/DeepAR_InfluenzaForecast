@@ -2,68 +2,38 @@ library(tidyr)
 library(surveillance)
 
 data <- read.csv("Influenza.csv")
-adjacentMatrix <- read.csv("AdjacentMatrix.csv", check.names=FALSE,
+adjacentMatrix <- read.csv("Notebooks/DataProcessing/AdjacentMatrix.csv", check.names=FALSE,
                            row.names='')
 df <- pivot_wider(data[c('value', 'date', 'location')], names_from = location, values_from = value)
-
+population_vector <- t(read.csv("Notebooks/DataProcessing/PopulationVector.csv",
+                              check.names=FALSE, row.names = "Location"))
+df[is.na(df)] <- 0
 df_sts <-sts(as.matrix(subset(df, select=-c(date))),
              start = c(2002, 1) , frequency = 52,
-             neighbourhood = as.matrix(adjacentMatrix))
-
+             neighbourhood = as.matrix(adjacentMatrix))#,
+             #population = population_vector)
+#check if dimensions are matching -> they seem to be
+print(dim(population_vector))
+print(dim(df))
+# check if colnames are matching -> they are
+`%!in%` <- Negate(`%in%`)
+for (col in colnames(subset(df, select=-c(date)))){
+  if (col %!in% colnames(population_vector)){
+    print(col) 
+}}
+print(colnames(adjacentMatrix))
+print(colnames(population_vector))
+print(observed(df_sts))
+print(dim(population_vector))
+data("fluBYBW")
+print(population(fluBYBW))
 plot(fluBYBW, type = observed ~ time)
 plot(df_sts, type = observed ~ time)
 
 
 ?hhh4
 
-
-## Not run: 
-
-### last but not least, a more sophisticated (and time-consuming)
-
-### analysis of weekly counts of influenza from 140 districts in
-
-### Southern Germany (originally analysed by Paul and Held, 2011,
-
-### and revisited by Held and Paul, 2012, and Meyer and Held, 2014)
-
-data("fluBYBW")
-
-class(fluBYBW)
-
-head(fluBYBW@observed)
-
-fluBYBW@neighbourhood
-
-fluBYBW@epoch
-
-
-
 ?sts
-
-plot(fluBYBW, type = observed ~ time)
-
-plot(fluBYBW, type = observed ~ unit,
-     
-     ## mean yearly incidence per 100.000 inhabitants (8 years)
-     
-     population = fluBYBW@map$X31_12_01 / 100000 * 8)
-
-## For the full set of models for data("fluBYBW") as analysed by
-
-## Paul and Held (2011), including predictive model assessement
-
-## using proper scoring rules, see the (computer-intensive)
-
-## demo("fluBYBW") script:
-
-demoscript <- system.file(file.path("demo", "fluBYBW.R"),
-                          
-                          package = "surveillance")
-
-demoscript
-
-#file.show(demoscript)
 
 ## Here we fit the improved power-law model of Meyer and Held (2014)
 
@@ -93,11 +63,11 @@ f.end.S3 <- addSeason2formula(
 
 ## computed from the binary adjacency indicator matrix
 
-nbOrder1 <- neighbourhood(fluBYBW)
+nbOrder1 <- neighbourhood(df_sts)
 
-neighbourhood(fluBYBW) <- nbOrder(nbOrder1, 15)
+neighbourhood(df_sts) <- nbOrder(nbOrder1, 15)
 
-plot(fluBYBW, unit = 9)
+plot(df_sts, unit = 9)
 
 ## full model specification
 
@@ -107,19 +77,22 @@ fluModel <- list(
   
   ne = list(f = update.formula(f.S1, ~ . + log(pop)), # adding a population offset; this means large regions attract more infections
             
-            weights = W_powerlaw(maxlag=max(neighbourhood(fluBYBW)),
+            weights = W_powerlaw(maxlag=max(neighbourhood(df_sts)),
                                  
                                  normalize = TRUE, log = TRUE)),
   
-  end = list(f = f.end.S3, offset = population(fluBYBW)), # population offset in the intercept; number of "unexplained" cases depends on population size
+  end = list(f = f.end.S3, offset = population(df_sts)), # population offset in the intercept; number of "unexplained" cases depends on population size
   
-  family = "NegBin1", data = list(pop = population(fluBYBW)),
+  family = "NegBin1", data = list(pop = population(df_sts)),
   
   optimizer = list(variance = list(method = "Nelder-Mead")),
   
   verbose = TRUE,
   
   subset = 2:364) # important for prediction: fit only to first seven years
+
+print(population(fluBYBW))
+print(population(df_sts))
 
 ## CAVE: random effects considerably increase the runtime of model estimation
 
@@ -129,7 +102,7 @@ fluModel <- list(
 
 set.seed(1)  # because random intercepts are initialized randomly
 
-fluFit <- hhh4(fluBYBW, fluModel)
+fluFit <- hhh4(df_sts, fluModel)
 
 summary(fluFit, idx2Exp = TRUE, amplitudeShift = TRUE)
 
