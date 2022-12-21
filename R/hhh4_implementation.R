@@ -10,7 +10,7 @@ library(surveillance)
 #                              check.names=FALSE, row.names = "Location")
 
 # For Developing purpose select only the BW data (faster computations)
-
+setwd("C:/Users/555ka/Coding/GIT-Projects/DeepAR_InfluenzaForecast/DeepAR_InfluenzaForecast")
 data <- read.csv("Notebooks/DataProcessing/BWDataset/influenzaBW.csv")
 adjacentMatrix <- read.csv("Notebooks/DataProcessing/BWDataset/AdjacentMatrixBW.csv",
                            check.names=FALSE,row.names='Index')
@@ -22,19 +22,8 @@ df <- pivot_wider(data[c('value', 'date', 'location')], names_from = location, v
 df[is.na(df)] <- 0
 df_sts <-sts(as.matrix(subset(df, select=-c(date))),
              start = c(2002, 1) , frequency = 52,
-             neighbourhood = as.matrix(adjacentMatrix))#,
-             #population = as.matrix(t(population_vector)))
-
-all.equal(colnames(subset(df, select=-c(date))), colnames(t(population_vector)))
-#check if dimensions are matching -> they seem to be matching
-print(dim(population_vector))
-print(dim(df))
-# check if colnames are matching -> they are
-`%!in%` <- Negate(`%in%`)
-for (col in colnames(subset(df, select=-c(date)))){
-  if (col %!in% colnames(population_vector)){
-    print(col) 
-}}
+             neighbourhood = as.matrix(adjacentMatrix),
+             population = as.vector(t(population_vector)))
 
 data("fluBYBW")
 print(population(fluBYBW))
@@ -100,6 +89,8 @@ fluModel <- list(
   
   verbose = TRUE,
   
+  #start = list(fixed=fef, random=ref, sd.corr=NULL),
+  
   subset = 2:364) # important for prediction: fit only to first seven years
 
 print(population(fluBYBW))
@@ -113,7 +104,42 @@ print(population(df_sts))
 
 set.seed(1)  # because random intercepts are initialized randomly
 
+
 fluFit <- hhh4(df_sts, fluModel)
+
+fef <- fixef(fluFit)
+print(fef)
+ref <- ranef(fluFit)
+print(ref)
+
+fluModel2 <- list(
+  
+  ar = list(f = f.S1),
+  
+  ne = list(f = update.formula(f.S1, ~ . + log(pop)), # adding a population offset; this means large regions attract more infections
+            
+            weights = W_powerlaw(maxlag=max(neighbourhood(df_sts)),
+                                 
+                                 normalize = TRUE, log = TRUE)),
+  
+  end = list(f = f.end.S3, offset = population(df_sts)), # population offset in the intercept; number of "unexplained" cases depends on population size
+  
+  family = "NegBin1", data = list(pop = population(df_sts)),
+  
+  optimizer = list(variance = list(method = "Nelder-Mead")),
+  
+  verbose = TRUE,
+  
+  start = list(fixed=fef, random=ref, sd.corr=NULL),
+  
+  subset = 2:364) # important for prediction: fit only to first seven years
+
+fluFit2 <- hhh4(df_sts, fluModel2)
+
+fef2 <- fixef(fluFit2)
+print(fef2)
+ref2 <- ranef(fluFit2)
+print(ref2)
 
 summary(fluFit, idx2Exp = TRUE, amplitudeShift = TRUE)
 
