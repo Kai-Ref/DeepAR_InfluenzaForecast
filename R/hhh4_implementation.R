@@ -46,7 +46,6 @@ plot(df_sts, type = observed ~ time)
 ## - endemic component: random intercepts + trend + S = 3 sine/cosine pairs
 
 ## - random intercepts are iid but correlated between components
-
 f.S1 <- addSeason2formula(
   
   ~-1 + ri(type="iid", corr="all"), # spatially correlated random effects
