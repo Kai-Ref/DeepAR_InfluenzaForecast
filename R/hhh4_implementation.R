@@ -1,33 +1,33 @@
 library(tidyr)
 library(surveillance)
 
-data <- read.csv("Influenza.csv")
+# Data for all states
+setwd("C:/Users/555ka/Coding/GIT-Projects/DeepAR_InfluenzaForecast/DeepAR_InfluenzaForecast")
+data <- read.csv("Notebooks/DataProcessing/influenza.csv")
 adjacentMatrix <- read.csv("Notebooks/DataProcessing/AdjacentMatrix.csv", check.names=FALSE,
-                           row.names='')
+                         row.names='')
+population_vector <- read.csv("Notebooks/DataProcessing/PopulationVector.csv",
+                          check.names=FALSE, row.names = "Location")
+
+# For Developing purpose select only the BW data (faster computations)
+
+# data <- read.csv("Notebooks/DataProcessing/BWDataset/influenzaBW.csv")
+# adjacentMatrix <- read.csv("Notebooks/DataProcessing/BWDataset/AdjacentMatrixBW.csv",
+#                           check.names=FALSE,row.names='Index')
+# population_vector <- read.csv("Notebooks/DataProcessing/BWDataset/PopulationVectorBW.csv",
+#                              check.names=FALSE, row.names = "Location")
+
+
 df <- pivot_wider(data[c('value', 'date', 'location')], names_from = location, values_from = value)
-population_vector <- t(read.csv("Notebooks/DataProcessing/PopulationVector.csv",
-                              check.names=FALSE, row.names = "Location"))
 df[is.na(df)] <- 0
 df_sts <-sts(as.matrix(subset(df, select=-c(date))),
-             start = c(2002, 1) , frequency = 52,
-             neighbourhood = as.matrix(adjacentMatrix))#,
-             #population = population_vector)
-#check if dimensions are matching -> they seem to be
-print(dim(population_vector))
-print(dim(df))
-# check if colnames are matching -> they are
-`%!in%` <- Negate(`%in%`)
-for (col in colnames(subset(df, select=-c(date)))){
-  if (col %!in% colnames(population_vector)){
-    print(col) 
-}}
-print(colnames(adjacentMatrix))
-print(colnames(population_vector))
-print(observed(df_sts))
-print(dim(population_vector))
-data("fluBYBW")
-print(population(fluBYBW))
-plot(fluBYBW, type = observed ~ time)
+             start = c(2002, 1) , frequency = 52,# maybe take len(df)/years here
+             neighbourhood = as.matrix(adjacentMatrix),
+             population = as.vector(t(population_vector)))
+
+#data("fluBYBW")
+#print(population(fluBYBW))
+#plot(fluBYBW, type = observed ~ time)
 plot(df_sts, type = observed ~ time)
 
 
@@ -47,17 +47,20 @@ plot(df_sts, type = observed ~ time)
 
 ## - random intercepts are iid but correlated between components
 
-f.S1 <- addSeason2formula(
+f.ne <- addSeason2formula(
   
-  ~-1 + ri(type="iid", corr="all"), # spatially correlated random effects
+  ~-1 + ri(type="iid", corr="all") + log(pop), # spatially correlated random effects 
+  ## JB: added population offset here directly for better readability
   
   S = 1, period = 52) # seasonality with one pair of sine-cosine waves
 
-f.end.S3 <- addSeason2formula(
+f.end <- addSeason2formula(
   
   ~-1 + ri(type="iid", corr="all") + I((t-208)/100), # spatially correlated random effects and a linear time trend
   
-  S = 3, period = 52) # seasonality with three sine cosine waves
+  S = 1, period = 52) # seasonality with three sine cosine waves
+## JB: I set S = 1 here as I don't think there is much of a point in adding 3 waves here
+## (the EN component plays hardly any role anyway)
 
 ## for power-law weights, we need adjaceny orders, which can be
 
@@ -65,7 +68,12 @@ f.end.S3 <- addSeason2formula(
 
 nbOrder1 <- neighbourhood(df_sts)
 
-neighbourhood(df_sts) <- nbOrder(nbOrder1, 15)
+neighbourhood(df_sts) <- nbOrder(nbOrder1, 15) + 1
+## JB: I added plus one here so we can subsume the AR in the NE component
+## i.e., we treat the same region now as if it was a direct neighbour, the direct neighbours
+## as if they were second-order neighbours etc. This removes quite a few parameters and in my
+## opinion is a more reasonable model anyway as otherwise we have separate terms for seasonality
+## in the two components, which does not make sense.
 
 plot(df_sts, unit = 9)
 
@@ -73,15 +81,15 @@ plot(df_sts, unit = 9)
 
 fluModel <- list(
   
-  ar = list(f = f.S1),
+  ar = list(f = ~ -1), ## JB: I removed the AR component here as it is now subsumed in the NE component, see above
   
-  ne = list(f = update.formula(f.S1, ~ . + log(pop)), # adding a population offset; this means large regions attract more infections
+  ne = list(f = f.ne, # adding a population offset; this means large regions attract more infections
             
             weights = W_powerlaw(maxlag=max(neighbourhood(df_sts)),
                                  
                                  normalize = TRUE, log = TRUE)),
   
-  end = list(f = f.end.S3, offset = population(df_sts)), # population offset in the intercept; number of "unexplained" cases depends on population size
+  end = list(f = f.end, offset = population(df_sts)), # population offset in the intercept; number of "unexplained" cases depends on population size
   
   family = "NegBin1", data = list(pop = population(df_sts)),
   
@@ -91,7 +99,7 @@ fluModel <- list(
   
   subset = 2:364) # important for prediction: fit only to first seven years
 
-print(population(fluBYBW))
+#print(population(fluBYBW))
 print(population(df_sts))
 
 ## CAVE: random effects considerably increase the runtime of model estimation
@@ -101,6 +109,7 @@ print(population(df_sts))
 ## to obtain reasonable start values for the other parameters.)
 
 set.seed(1)  # because random intercepts are initialized randomly
+
 
 fluFit <- hhh4(df_sts, fluModel)
 
