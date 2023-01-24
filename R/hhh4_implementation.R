@@ -21,13 +21,9 @@ population_vector <- read.csv("Notebooks/DataProcessing/PopulationVector.csv",
 df <- pivot_wider(data[c('value', 'date', 'location')], names_from = location, values_from = value)
 df[is.na(df)] <- 0
 df_sts <-sts(as.matrix(subset(df, select=-c(date))),
-             start = c(2002, 1) , frequency = 52,# maybe take len(df)/years here
+             start = c(2002, 1) , frequency = 52.25,# maybe take len(df)/years here
              neighbourhood = as.matrix(adjacentMatrix),
              population = as.vector(t(population_vector)))
-
-#data("fluBYBW")
-#print(population(fluBYBW))
-#plot(fluBYBW, type = observed ~ time)
 plot(df_sts, type = observed ~ time)
 
 
@@ -147,7 +143,7 @@ osa <- oneStepAhead(fluFit, tp = c(364, 415), # tp is shifted by one, see docume
 
 # plot fan plot:
 
-plot(osa, start = 2009, unit  =2)
+plot(osa, start = 2000, unit  =2)
 
 # adding this to the original plot is really tedious...
 
@@ -163,9 +159,9 @@ path_forecast <- predictive_moments(fluFit, t_condition = 364, lgt = 5)
 
 fanplot_prediction(path_forecast)
 
-plot(fluFit, type = "fitted", unit = 1)
+plot(fluFit, type = "fitted", unit = 16)# unit 16 equals the Düw LKs
 
-fanplot_prediction(path_forecast, unit = 1, add  =TRUE)
+fanplot_prediction(path_forecast, unit = 16, add  =TRUE)
 
 # predictive means:
 
@@ -175,7 +171,7 @@ mu <- path_forecast$mu_matrix
 
 sigma2 <- path_forecast$var_matrix
 
-# to evaluate probabilistics forecasts we can use a negative binomial approcximation
+# to evaluate probabilistics forecasts we can use a negative binomial approximation
 
 # the size parameter can be obtaine as
 
@@ -184,6 +180,12 @@ size <- pmin(abs(mu / (sigma2 / mu - 1)), 10000)
 # example:
 
 plot(dnbinom(0:20, mu = mu[1, 1], size = size[1, 1]))
+
+# JB: you can also extract quantiles, e.g. for unit Bad Dürkheim and time 369 (based on data up to 366):
+
+qnbinom(p = c(0.025, 0.1, 0.25, 0.5, 0.75, 0.9, 0.975), 
+        
+        mu = mu["t=369", "LK Bad Dürkheim"], size = size["t=369", "LK Bad Dürkheim"])
 
 ## End(Not run)
 
