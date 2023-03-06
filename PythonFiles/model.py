@@ -165,7 +165,7 @@ def make_one_ts_prediction(config, df, location="LK Bad Dürkheim"):
 # Evaluation Plots
 
 
-def plot_coverage(config, evaluator_df_dict):
+def plot_coverage(config, evaluator_df_dict, locations=None):
     """
     Given a dictionary, where the values consist of evaluation_df's, this function is going to create plots of the 4 different week-ahead coverages.  
     However, the weekly performances have to be under the "item_id" with f.e. "aggregated {1}" for the 1 week-ahead metrics.
