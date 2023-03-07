@@ -138,6 +138,8 @@ plot(fluFit, type = "neweights", xlab = "adjacency order")
 osa <- oneStepAhead(fluFit, tp = c(364, 415), # tp is shifted by one, see documentation
                     
                     type = "final") # "final" means the model is not updated after each week.
+confint(osa, level = c(0.1,0.5,0.9))
+?confint
 
 # if "final" is used this is really quick, otherwise it will take very long.
 
@@ -154,6 +156,14 @@ plot(osa, start = 2000, unit  =2)
 # install_github("jbracher/hhh4addon", build_vignettes = TRUE)
 
 library(hhh4addon)
+
+y.start <- observed(df_sts)[365,]
+Simulation <- simulate(fluFit, nsim=100, seed=1, subset = 366:380, y.start = y.start)
+summary(colSums(Simulation,dims=2))
+plot(Simulation,"fan", means.args=list(),key.args=list())
+
+vignette("hhh4addon")
+vignette("hhh4_spacetime")
 
 path_forecast <- predictive_moments(fluFit, t_condition = 364, lgt = 5)
 
