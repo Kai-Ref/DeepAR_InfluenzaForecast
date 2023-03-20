@@ -11,13 +11,13 @@ class Configuration:
         
         #deepAR parameters
         self.freq = "W-SUN"
-        self.context_length = 52   # in number of weeks
+        self.context_length = 4   # in number of weeks
         self.prediction_length = 4   # in number of weeks ->1 Week (104 Test Windows), 13W(8TW), 26W(4TW), 52W(2TW),... 
         self.windows = int(104 / self.prediction_length)
-        self.num_layers = 2
-        self.num_cells = 128
+        self.num_layers = 4
+        self.num_cells = 32
         self.cell_type = "lstm"
-        self.trainer = Trainer(epochs=4)
+        self.trainer = Trainer(epochs=8)
         self.distr_output = NegativeBinomialOutput()
         
         self.deeparestimator = DeepAREstimator(freq=self.freq,

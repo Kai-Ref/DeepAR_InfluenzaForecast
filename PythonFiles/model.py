@@ -9,6 +9,46 @@ from gluonts.evaluation.backtest import make_evaluation_predictions
 from gluonts.dataset.split import split, TestData
 from gluonts.dataset.util import to_pandas
 
+def preprocessing(config, df, check_count=False, output_type="PD"):
+    """
+    This function processes the data into either a correctly spaced pd.DataFrame, a PandasDataset, a ListDataset or
+    a pd.Dataframe where only the index has been set.
+    We also have the option to receive an output of the count of each location, with fewer observations than the maximum
+    observations within the training and testing period.
+    """
+    df['date'] = pd.to_datetime(df['date'])
+    df = df.set_index('date')
+    if check_count:
+        count_dict = {}
+        for location in df.location.unique():
+            # save the amount of values within the train & test time period into the count_dict
+            location_df = df.loc[(df['location'] == location) & (df.index > config.train_start_time) & (df.index <= config.test_end_time),:]
+            count_dict[location] = location_df.shape[0]
+        # print out the distribution of each region with missing values
+        print('LK mit weniger als' + str(max(count_dict.values())))
+        missing_values_dict = {k : v for k, v in count_dict.items() if v < max(count_dict.values())}
+        print(missing_values_dict)
+        return df, missing_values_dict
+    
+    if output_type in ['PD', 'LD', 'corrected_df']:
+        #Create a DataFrame Blueprint
+        correctly_spaced_index = pd.date_range(start=config.train_start_time, end=config.test_end_time,freq=config.freq)
+        correctly_spaced_location_df = pd.DataFrame(index=correctly_spaced_index)
+        correctly_spaced_df = pd.DataFrame()
+        location_list = df.loc[:, 'location'].unique()
+        for location in location_list:
+            temporary_df = correctly_spaced_location_df.join(df.loc[df.location == location])
+            temporary_df['location'] = temporary_df['location'].fillna(location)
+            correctly_spaced_df = pd.concat([correctly_spaced_df, temporary_df])
+        if output_type == "PD":
+            df = PandasDataset.from_long_dataframe(dataframe=correctly_spaced_df,item_id='location', target="value",freq=config.freq)
+        if output_type == "LD":
+            df = ListDataset([{"start": min(correctly_spaced_index), "target": correctly_spaced_df.loc[correctly_spaced_df.location == location, 'value']}
+                              for location in location_list], freq=config.freq)
+        if output_type == "corrected_df":
+            return correctly_spaced_df
+    return df
+
 
 def model(config, training_data, test_data, estimator):
     """
@@ -70,46 +110,37 @@ def split_forecasts_by_week(config, forecasts, tss, locations, week, equal_time_
         )
     return week_ahead_forecasts, split_tss
 
-
-def preprocessing(config, df, check_count=False, output_type="PD"):
-    """
-    This function processes the data into either a correctly spaced pd.DataFrame, a PandasDataset, a ListDataset or
-    a pd.Dataframe where only the index has been set.
-    We also have the option to receive an output of the count of each location, with fewer observations than the maximum
-    observations within the training and testing period.
-    """
-    df['date'] = pd.to_datetime(df['date'])
-    df = df.set_index('date')
-    if check_count:
-        count_dict = {}
-        for location in df.location.unique():
-            # save the amount of values within the train & test time period into the count_dict
-            location_df = df.loc[(df['location'] == location) & (df.index > config.train_start_time) & (df.index <= config.test_end_time),:]
-            count_dict[location] = location_df.shape[0]
-        # print out the distribution of each region with missing values
-        print('LK mit weniger als' + str(max(count_dict.values())))
-        missing_values_dict = {k : v for k, v in count_dict.items() if v < max(count_dict.values())}
-        print(missing_values_dict)
-        return df, missing_values_dict
+def print_forecasts_by_week(config, corrected_df, forecast_dict, locations, week_ahead_list, plot_begin_at_trainstart=False):
+    '''
+    Prints out plots for the given week-Ahead forecasts of given locations. It needs the initial corrected dataframe, as well as the forecast_dict
+    that contains the different week-ahead forecasts.
+    The start of the plot time axis, can be set to the training start time (TRUE) or the testing start time (FALSE).
+    '''
+    for location in locations:
+        for week_ahead in week_ahead_list:
+            #plot the forecasts
+            fig, ax = plt.subplots(1, 1, figsize=(10, 7))
+            plt.title(f'{location} - WA{week_ahead}')
+            # determine the beginning of the time series
+            if plot_begin_at_trainstart == True:
+                plot_start_time = config.train_start_time
+            else:
+                plot_start_time = config.train_end_time
+            #first plot the time series as a whole (x-axis: Date, y-axis: influenza-values)
+            plt.plot((corrected_df.loc[(corrected_df['location'] == location) &
+                                    (corrected_df.index <= config.test_end_time) &
+                                    (corrected_df.index >= plot_start_time)].index),
+                     corrected_df.loc[(corrected_df['location'] == location) &
+                                   (corrected_df.index <= config.test_end_time) &
+                                   (corrected_df.index >= plot_start_time),'value'])
+            plt.grid(which="both")
+            # select the right week-ahead forecast entry for a set location
+            forecast_entry = forecast_dict[list(forecast_dict.keys())[week_ahead-1]][locations.index(location)]
+            prediction_intervals = (50.0, 90.0)
+            forecast_entry.plot(prediction_intervals=prediction_intervals, color="g")
+            plt.grid(which="both")
+            plt.show()
     
-    if output_type in ['PD', 'LD', 'corrected_df']:
-        #Create a DataFrame Blueprint
-        correctly_spaced_index = pd.date_range(start=config.train_start_time, end=config.test_end_time,freq=config.freq)
-        correctly_spaced_location_df = pd.DataFrame(index=correctly_spaced_index)
-        correctly_spaced_df = pd.DataFrame()
-        location_list = df.loc[:, 'location'].unique()
-        for location in location_list:
-            temporary_df = correctly_spaced_location_df.join(df.loc[df.location == location])
-            temporary_df['location'] = temporary_df['location'].fillna(location)
-            correctly_spaced_df = pd.concat([correctly_spaced_df, temporary_df])
-        if output_type == "PD":
-            df = PandasDataset.from_long_dataframe(dataframe=correctly_spaced_df,item_id='location', target="value",freq=config.freq)
-        if output_type == "LD":
-            df = ListDataset([{"start": min(correctly_spaced_index), "target": correctly_spaced_df.loc[correctly_spaced_df.location == location, 'value']}
-                              for location in location_list], freq=config.freq)
-        if output_type == "corrected_df":
-            return correctly_spaced_df
-    return df
 
     
 def make_one_ts_prediction(config, df, location="LK Bad Dürkheim"):
