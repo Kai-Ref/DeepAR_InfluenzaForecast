@@ -5,7 +5,7 @@ from datetime import datetime
 import gluonts
 from gluonts.dataset.common import ListDataset
 from gluonts.dataset.pandas import PandasDataset
-from gluonts.evaluation.backtest import make_evaluation_predictions
+from gluonts.evaluation import make_evaluation_predictions, Evaluator
 from gluonts.dataset.split import split, TestData
 from gluonts.dataset.util import to_pandas
 
@@ -68,6 +68,38 @@ def model(config, training_data, test_data, estimator):
     tss = list(ts_it)
     return forecasts, tss
 
+def forecast_by_week(config, train_set, test_set, locations, models_dict):
+    #define the dicts that are going to be output later on
+    evaluator_df_dict = {}
+    forecasts_dict = {}
+    #iterate through the given models and fit them
+    for key in models_dict.keys():
+        forecasts, tss = model(config, train_set, test_set, models_dict[key])
+        # Splitting the forecasts into their weekly contribution
+        split_tss = split_forecasts_by_week(config, forecasts, tss, locations, 4, equal_time_frame=True)[1]
+        forecast_dict ={1 : split_forecasts_by_week(config, forecasts, tss, locations, 1, equal_time_frame=True)[0],
+                        2 : split_forecasts_by_week(config, forecasts, tss, locations, 2, equal_time_frame=True)[0],
+                        3 : split_forecasts_by_week(config, forecasts, tss, locations, 3, equal_time_frame=True)[0],
+                        4 : split_forecasts_by_week(config, forecasts, tss, locations, 4, equal_time_frame=True)[0]}
+        # Evaluation with the quantiles of the configuration
+        evaluator = Evaluator(quantiles=config.quantiles)
+        evaluator_df = pd.DataFrame()         
+        # iterate over the 4 different week-aheads
+        for forecast in forecast_dict.values():
+            agg_metrics, item_metrics = evaluator(split_tss, forecast)
+            d = {key for key in forecast_dict if forecast_dict[key] == forecast}
+            for location in locations[:]:
+                item_metrics.loc[item_metrics.item_id == f"{location}", "item_id"] = f"{location} {d}"
+                evaluator_df = pd.concat([evaluator_df, item_metrics[item_metrics.item_id == f"{location} {d}"]])
+            agg_metrics["item_id"] = f"aggregated {d}"
+            evaluator_df = pd.concat([evaluator_df, pd.DataFrame(agg_metrics,index=[0])])
+        # produce the average Quantile Loss metric by dividing the mean absolute QL through the number of involved locations per weekahead, which is usually 411 (each district)
+        included_locations = [item_id for item_id in evaluator_df.item_id.unique() if "aggregated" not in item_id if "1" in item_id]
+        evaluator_df.loc[evaluator_df.item_id.isin([item_id for item_id in evaluator_df.item_id if "aggregate" in item_id]), "mean_WIS"] = evaluator_df.loc[evaluator_df.item_id.isin([item_id for item_id in evaluator_df.item_id if "aggregate" in item_id]),"mean_absolute_QuantileLoss"]/len(included_locations)
+        evaluator_df_dict[key] = evaluator_df
+        forecasts_dict[key] = forecast_dict
+    return forecasts_dict, evaluator_df_dict
+
 
 def split_forecasts_by_week(config, forecasts, tss, locations, week, equal_time_frame=False):
     """
@@ -109,37 +141,6 @@ def split_forecasts_by_week(config, forecasts, tss, locations, week, equal_time_
                                                  )
         )
     return week_ahead_forecasts, split_tss
-
-def print_forecasts_by_week(config, corrected_df, forecast_dict, locations, week_ahead_list, plot_begin_at_trainstart=False):
-    '''
-    Prints out plots for the given week-Ahead forecasts of given locations. It needs the initial corrected dataframe, as well as the forecast_dict
-    that contains the different week-ahead forecasts.
-    The start of the plot time axis, can be set to the training start time (TRUE) or the testing start time (FALSE).
-    '''
-    for location in locations:
-        for week_ahead in week_ahead_list:
-            #plot the forecasts
-            fig, ax = plt.subplots(1, 1, figsize=(10, 7))
-            plt.title(f'{location} - WA{week_ahead}')
-            # determine the beginning of the time series
-            if plot_begin_at_trainstart == True:
-                plot_start_time = config.train_start_time
-            else:
-                plot_start_time = config.train_end_time
-            #first plot the time series as a whole (x-axis: Date, y-axis: influenza-values)
-            plt.plot((corrected_df.loc[(corrected_df['location'] == location) &
-                                    (corrected_df.index <= config.test_end_time) &
-                                    (corrected_df.index >= plot_start_time)].index),
-                     corrected_df.loc[(corrected_df['location'] == location) &
-                                   (corrected_df.index <= config.test_end_time) &
-                                   (corrected_df.index >= plot_start_time),'value'])
-            plt.grid(which="both")
-            # select the right week-ahead forecast entry for a set location
-            forecast_entry = forecast_dict[list(forecast_dict.keys())[week_ahead-1]][locations.index(location)]
-            prediction_intervals = (50.0, 90.0)
-            forecast_entry.plot(prediction_intervals=prediction_intervals, color="g")
-            plt.grid(which="both")
-            plt.show()
     
 
     
@@ -194,6 +195,38 @@ def make_one_ts_prediction(config, df, location="LK Bad Dürkheim"):
 
 
 # Evaluation Plots
+
+
+def print_forecasts_by_week(config, corrected_df, forecast_dict, locations, week_ahead_list, plot_begin_at_trainstart=False):
+    '''
+    Prints out plots for the given week-Ahead forecasts of given locations. It needs the initial corrected dataframe, as well as the forecast_dict
+    that contains the different week-ahead forecasts.
+    The start of the plot time axis, can be set to the training start time (TRUE) or the testing start time (FALSE).
+    '''
+    for location in locations:
+        for week_ahead in week_ahead_list:
+            #plot the forecasts
+            fig, ax = plt.subplots(1, 1, figsize=(10, 7))
+            plt.title(f'{location} - WA{week_ahead}')
+            # determine the beginning of the time series
+            if plot_begin_at_trainstart == True:
+                plot_start_time = config.train_start_time
+            else:
+                plot_start_time = config.train_end_time
+            #first plot the time series as a whole (x-axis: Date, y-axis: influenza-values)
+            plt.plot((corrected_df.loc[(corrected_df['location'] == location) &
+                                    (corrected_df.index <= config.test_end_time) &
+                                    (corrected_df.index >= plot_start_time)].index),
+                     corrected_df.loc[(corrected_df['location'] == location) &
+                                   (corrected_df.index <= config.test_end_time) &
+                                   (corrected_df.index >= plot_start_time),'value'])
+            plt.grid(which="both")
+            # select the right week-ahead forecast entry for a set location
+            forecast_entry = forecast_dict[list(forecast_dict.keys())[week_ahead-1]][locations.index(location)]
+            prediction_intervals = (50.0, 90.0)
+            forecast_entry.plot(prediction_intervals=prediction_intervals, color="g")
+            plt.grid(which="both")
+            plt.show()
 
 
 def plot_coverage(config, evaluator_df_dict, locations=None):
