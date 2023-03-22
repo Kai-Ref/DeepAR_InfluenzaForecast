@@ -33,7 +33,8 @@ def preprocessing(config, df, check_count=False, output_type="PD"):
     
     if output_type in ['PD', 'LD', 'corrected_df']:
         #Create a DataFrame Blueprint
-        correctly_spaced_index = pd.date_range(start=config.train_start_time, end=config.test_end_time,freq=config.freq)
+        start, end = min(df.index), max(df.index)
+        correctly_spaced_index = pd.date_range(start=start, end=end,freq=config.freq)
         correctly_spaced_location_df = pd.DataFrame(index=correctly_spaced_index)
         correctly_spaced_df = pd.DataFrame()
         location_list = df.loc[:, 'location'].unique()
@@ -50,18 +51,26 @@ def preprocessing(config, df, check_count=False, output_type="PD"):
             return correctly_spaced_df
     return df
 
-def train_test_split(config, df):
+def train_test_split(config, df, with_features=False):
+    locations = list(df.location.unique())
     # Split with the usual time and the 
     train_set = df.loc[(df.index <= config.train_end_time) & (df.index >= config.train_start_time), :]
     test_set = df.loc[(df.index >= config.train_start_time) & (df.index <= config.test_end_time), :]
     start_time = min(test_set.index.difference(train_set.index))
     end_time = max(test_set.index.difference(train_set.index))
-    #Format the train and test_set into a PandasDataset
-    train_set = PandasDataset.from_long_dataframe(dataframe=train_set, item_id='location', target="value", freq=config.freq)
-    test_set = PandasDataset.from_long_dataframe(dataframe=test_set, item_id='location', target="value", freq=config.freq)
-
+    if with_features:
+        # Format the train and test_set into a PandasDataset with features
+        train_set = PandasDataset.from_long_dataframe(dataframe=train_set, item_id='location', target="value", freq=config.freq,
+                                                      feat_static_real=["population"]+locations, feat_dynamic_real=["week"])
+        test_set = PandasDataset.from_long_dataframe(dataframe=test_set, item_id='location', target="value", freq=config.freq,
+                                                     feat_static_real=["population"]+locations, feat_dynamic_real=["week"])
+    else:
+        # Format the train and test_set into a PandasDataset without features
+        train_set = PandasDataset.from_long_dataframe(dataframe=train_set, item_id='location', target="value", freq=config.freq)
+        test_set = PandasDataset.from_long_dataframe(dataframe=test_set, item_id='location', target="value", freq=config.freq)
+    # Create the rolling version of the test set with windows of length config.prediction_length and following windows of 1 timestep
     test_set = generate_rolling_dataset(dataset=test_set,
-                                        strategy=StepStrategy(prediction_length=4,step_size=1),
+                                        strategy=StepStrategy(prediction_length=config.prediction_length, step_size=1),
                                         start_time=pd.Period(start_time,config.freq),
                                         end_time=pd.Period(end_time,config.freq)
                                         )
