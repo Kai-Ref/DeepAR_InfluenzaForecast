@@ -8,6 +8,7 @@ from gluonts.dataset.pandas import PandasDataset
 from gluonts.evaluation import make_evaluation_predictions, Evaluator
 from gluonts.dataset.split import split, TestData
 from gluonts.dataset.util import to_pandas
+from gluonts.dataset.rolling_dataset import generate_rolling_dataset,StepStrategy
 
 def preprocessing(config, df, check_count=False, output_type="PD"):
     """
@@ -48,6 +49,23 @@ def preprocessing(config, df, check_count=False, output_type="PD"):
         if output_type == "corrected_df":
             return correctly_spaced_df
     return df
+
+def train_test_split(config, df):
+    # Split with the usual time and the 
+    train_set = df.loc[(df.index <= config.train_end_time) & (df.index >= config.train_start_time), :]
+    test_set = df.loc[(df.index >= config.train_start_time) & (df.index <= config.test_end_time), :]
+    start_time = min(test_set.index.difference(train_set.index))
+    end_time = max(test_set.index.difference(train_set.index))
+    #Format the train and test_set into a PandasDataset
+    train_set = PandasDataset.from_long_dataframe(dataframe=train_set, item_id='location', target="value", freq=config.freq)
+    test_set = PandasDataset.from_long_dataframe(dataframe=test_set, item_id='location', target="value", freq=config.freq)
+
+    test_set = generate_rolling_dataset(dataset=test_set,
+                                        strategy=StepStrategy(prediction_length=4,step_size=1),
+                                        start_time=pd.Period(start_time,config.freq),
+                                        end_time=pd.Period(end_time,config.freq)
+                                        )
+    return train_set, test_set
 
 
 def model(config, training_data, test_data, estimator):
