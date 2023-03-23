@@ -9,33 +9,50 @@ class Configuration:
         self.train_end_time = datetime(2017,12,31,23,0,0)
         self.test_end_time = datetime(2019,12,31,23,0,0)
         
-        #deepAR parameters
-        self.freq = "W-SUN"
-        self.context_length = 4   # in number of weeks
-        self.prediction_length = 4   # in number of weeks ->1 Week (104 Test Windows), 13W(8TW), 26W(4TW), 52W(2TW),... 
-        self.windows = int(104 / self.prediction_length)
-        self.num_layers = 4
-        self.num_cells = 32
-        self.cell_type = "lstm"
-        self.trainer = Trainer(epochs=8)
-        self.distr_output = NegativeBinomialOutput()
         
-        self.deeparestimator = DeepAREstimator(freq=self.freq,
-                        context_length=self.context_length,
-                        prediction_length=self.prediction_length,
-                        num_layers=self.num_layers,
-                        num_cells=self.num_cells,
-                        cell_type=self.cell_type,
-                        trainer=self.trainer,
-                        distr_output=self.distr_output,
+        self.parameters = {
+            "freq" : "W-SUN",
+            "context_length" : 4,   # in number of weeks
+            "prediction_length" : 4,   # in number of weeks ->1 Week (104 Test Windows), 13W(8TW), 26W(4TW), 52W(2TW),... 
+            "num_layers" : 4,
+            "num_cells" : 32,
+            "cell_type" : "lstm",
+            "epochs" : 8,
+            "learning_rate": 0.001,
+            #"num_batches_per_epoch":50,
+            "batch_size":1,
+            "distr_output" : NegativeBinomialOutput(),
+            "use_feat_dynamic_real" : True,
+            "use_feat_static_real" : True,
+        }
+        
+        self.windows = int(104 / self.parameters["prediction_length"])
+
+        self.deeparestimator = DeepAREstimator(freq=self.parameters["freq"],
+                        context_length=self.parameters["context_length"],
+                        prediction_length=self.parameters["prediction_length"],
+                        num_layers=self.parameters["num_layers"],
+                        num_cells=self.parameters["num_cells"],
+                        cell_type=self.parameters["cell_type"],
+                        trainer=Trainer(epochs=self.parameters["epochs"],
+                                       learning_rate=self.parameters["learning_rate"],
+                                       #num_batches_per_epoch=self.parameters["num_batches_per_epoch"]
+                                       ),
+                        batch_size=self.parameters["batch_size"],
+                        distr_output=self.parameters["distr_output"],
+                        use_feat_static_real=self.parameters["use_feat_static_real"],
+                        use_feat_dynamic_real=self.parameters["use_feat_dynamic_real"],
                         )
         
         self.num_hidden_dimensions = [10]
         self.feedforwardestimator = SimpleFeedForwardEstimator(num_hidden_dimensions=self.num_hidden_dimensions,
-                                                              prediction_length=self.prediction_length,
-                                                              context_length=self.context_length,
-                                                              distr_output=self.distr_output,
-                                                              trainer=self.trainer
+                                                              prediction_length=self.parameters["prediction_length"],
+                                                              context_length=self.parameters["context_length"],
+                                                              distr_output=self.parameters["distr_output"],
+                                                              trainer=Trainer(epochs=self.parameters["epochs"],
+                                                                              learning_rate=self.parameters["learning_rate"],
+                                                                              #num_batches_per_epoch=self.parameters["num_batches_per_epoch"]
+                                                                             ),
                                                               )
         
         self.target = "value"

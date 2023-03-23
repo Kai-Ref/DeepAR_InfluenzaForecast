@@ -3,6 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from datetime import datetime
 import gluonts
+from gluonts.mx import Trainer, DeepAREstimator
 from gluonts.dataset.common import ListDataset
 from gluonts.dataset.pandas import PandasDataset
 from gluonts.evaluation import make_evaluation_predictions, Evaluator
@@ -34,7 +35,7 @@ def preprocessing(config, df, check_count=False, output_type="PD"):
     if output_type in ['PD', 'LD', 'corrected_df']:
         #Create a DataFrame Blueprint
         start, end = min(df.index), max(df.index)
-        correctly_spaced_index = pd.date_range(start=start, end=end,freq=config.freq)
+        correctly_spaced_index = pd.date_range(start=start, end=end,freq=config.parameters["freq"])
         correctly_spaced_location_df = pd.DataFrame(index=correctly_spaced_index)
         correctly_spaced_df = pd.DataFrame()
         location_list = df.loc[:, 'location'].unique()
@@ -43,10 +44,10 @@ def preprocessing(config, df, check_count=False, output_type="PD"):
             temporary_df['location'] = temporary_df['location'].fillna(location)
             correctly_spaced_df = pd.concat([correctly_spaced_df, temporary_df])
         if output_type == "PD":
-            df = PandasDataset.from_long_dataframe(dataframe=correctly_spaced_df,item_id='location', target="value",freq=config.freq)
+            df = PandasDataset.from_long_dataframe(dataframe=correctly_spaced_df,item_id='location', target="value",freq=config.parameters["freq"])
         if output_type == "LD":
             df = ListDataset([{"start": min(correctly_spaced_index), "target": correctly_spaced_df.loc[correctly_spaced_df.location == location, 'value']}
-                              for location in location_list], freq=config.freq)
+                              for location in location_list], freq=config.parameters["freq"])
         if output_type == "corrected_df":
             return correctly_spaced_df
     return df
@@ -60,26 +61,26 @@ def train_test_split(config, df, with_features=False):
     end_time = max(test_set.index.difference(train_set.index))
     if with_features:
         # Format the train and test_set into a PandasDataset with features
-        train_set = PandasDataset.from_long_dataframe(dataframe=train_set, item_id='location', target="value", freq=config.freq,
+        train_set = PandasDataset.from_long_dataframe(dataframe=train_set, item_id='location', target="value", freq=config.parameters["freq"],
                                                       feat_static_real=["population"]+locations, feat_dynamic_real=["week"])
-        test_set = PandasDataset.from_long_dataframe(dataframe=test_set, item_id='location', target="value", freq=config.freq,
+        test_set = PandasDataset.from_long_dataframe(dataframe=test_set, item_id='location', target="value", freq=config.parameters["freq"],
                                                      feat_static_real=["population"]+locations, feat_dynamic_real=["week"])
     else:
         # Format the train and test_set into a PandasDataset without features
-        train_set = PandasDataset.from_long_dataframe(dataframe=train_set, item_id='location', target="value", freq=config.freq)
-        test_set = PandasDataset.from_long_dataframe(dataframe=test_set, item_id='location', target="value", freq=config.freq)
+        train_set = PandasDataset.from_long_dataframe(dataframe=train_set, item_id='location', target="value", freq=config.parameters["freq"])
+        test_set = PandasDataset.from_long_dataframe(dataframe=test_set, item_id='location', target="value", freq=config.parameters["freq"])
     # Create the rolling version of the test set with windows of length config.prediction_length and following windows of 1 timestep
     test_set = generate_rolling_dataset(dataset=test_set,
-                                        strategy=StepStrategy(prediction_length=config.prediction_length, step_size=1),
-                                        start_time=pd.Period(start_time,config.freq),
-                                        end_time=pd.Period(end_time,config.freq)
+                                        strategy=StepStrategy(prediction_length=config.parameters["prediction_length"], step_size=1),
+                                        start_time=pd.Period(start_time,config.parameters["freq"]),
+                                        end_time=pd.Period(end_time,config.parameters["freq"])
                                         )
     return train_set, test_set
 
 
-def model(config, training_data, test_data, estimator):
+def model(training_data, test_data, estimator):
     """
-    This function defines the estimator based on the attributes set in Configuration.py.
+    This function fits a given estimator.
     Then this estimator is fit with the given training_data and the forecasts,
     aswell as the true values for the test_data are calculated via the make_evaluation_predictions function from gluonts. 
     """
@@ -90,7 +91,7 @@ def model(config, training_data, test_data, estimator):
                          predictor=predictor,  
                          num_samples=100,  
                          )
-    # Turn the generator-Objects into lists
+    # unpack Iterator-Objects into lists
     forecasts = list(forecast_it)
     tss = list(ts_it)
     return forecasts, tss
@@ -101,7 +102,7 @@ def forecast_by_week(config, train_set, test_set, locations, models_dict):
     forecasts_dict = {}
     #iterate through the given models and fit them
     for key in models_dict.keys():
-        forecasts, tss = model(config, train_set, test_set, models_dict[key])
+        forecasts, tss = model(train_set, test_set, models_dict[key])
         # Splitting the forecasts into their weekly contribution
         split_tss = split_forecasts_by_week(config, forecasts, tss, locations, 4, equal_time_frame=True)[1]
         forecast_dict ={1 : split_forecasts_by_week(config, forecasts, tss, locations, 1, equal_time_frame=True)[0],
@@ -116,16 +117,47 @@ def forecast_by_week(config, train_set, test_set, locations, models_dict):
             agg_metrics, item_metrics = evaluator(split_tss, forecast)
             d = {key for key in forecast_dict if forecast_dict[key] == forecast}
             for location in locations[:]:
+                #rename location id to differentiate between the weekahead predictions and concat
                 item_metrics.loc[item_metrics.item_id == f"{location}", "item_id"] = f"{location} {d}"
                 evaluator_df = pd.concat([evaluator_df, item_metrics[item_metrics.item_id == f"{location} {d}"]])
             agg_metrics["item_id"] = f"aggregated {d}"
-            evaluator_df = pd.concat([evaluator_df, pd.DataFrame(agg_metrics,index=[0])])
+            evaluator_df = pd.concat([evaluator_df, pd.DataFrame(agg_metrics, index=[0])])
         # produce the average Quantile Loss metric by dividing the mean absolute QL through the number of involved locations per weekahead, which is usually 411 (each district)
         included_locations = [item_id for item_id in evaluator_df.item_id.unique() if "aggregated" not in item_id if "1" in item_id]
         evaluator_df.loc[evaluator_df.item_id.isin([item_id for item_id in evaluator_df.item_id if "aggregate" in item_id]), "mean_WIS"] = evaluator_df.loc[evaluator_df.item_id.isin([item_id for item_id in evaluator_df.item_id if "aggregate" in item_id]),"mean_absolute_QuantileLoss"]/len(included_locations)
         evaluator_df_dict[key] = evaluator_df
         forecasts_dict[key] = forecast_dict
     return forecasts_dict, evaluator_df_dict
+
+
+def update_deepAR_parameters(config, new_parameters):
+    ''' 
+    This function updates the DeepAR-configuration in the Configuration.py file. 
+    Note that new_parameters must be a dict containing the exact keys used in config.parameters.
+    '''
+    parameters = config.parameters.copy()
+    for key in new_parameters.keys():
+        if key in parameters.keys():
+            parameters[key] = new_parameters[key]
+        else:
+            print(f"This key {key} isn't available in config.parameters! Thus the default config will maintain.")
+    #update the deeparestimator in config
+    deeparestimator = DeepAREstimator(freq=parameters["freq"],
+                    context_length=parameters["context_length"],
+                    prediction_length=parameters["prediction_length"],
+                    num_layers=parameters["num_layers"],
+                    num_cells=parameters["num_cells"],
+                    cell_type=parameters["cell_type"],
+                    trainer=Trainer(epochs=parameters["epochs"],
+                                    learning_rate=parameters["learning_rate"],
+                                    #num_batches_per_epoch=parameters["num_batches_per_epoch"]
+                                   ),
+                    batch_size=parameters["batch_size"],
+                    distr_output=parameters["distr_output"],
+                    use_feat_static_real=parameters["use_feat_static_real"],
+                    use_feat_dynamic_real=parameters["use_feat_dynamic_real"],
+                    )
+    return deeparestimator
 
 
 def split_forecasts_by_week(config, forecasts, tss, locations, week, equal_time_frame=False):
@@ -158,13 +190,13 @@ def split_forecasts_by_week(config, forecasts, tss, locations, week, equal_time_
             weekly_samples_array = np.concatenate((weekly_samples_array, forecasts[k].samples[:, (week-1):week]), axis=1)
         
         # Save the correct starting time, determined by the first [start_date] of the location and the [week] parameter
-        start_date = pd.date_range(start=forecasts[first_time_point_of_location].start_date.to_timestamp(), periods=week, freq=config.freq)[-1]
+        start_date = pd.date_range(start=forecasts[first_time_point_of_location].start_date.to_timestamp(), periods=week, freq=config.parameters["freq"])[-1]
         # append the filtered [weekly_samples_array]-array and the correct [start_date] as a SampleForecast-Object for each location
         week_ahead_forecasts.append(
                                     gluonts.model.forecast.SampleForecast(info=forecasts[first_time_point_of_location].info,
                                                                           item_id=forecasts[first_time_point_of_location].item_id,
                                                                           samples=weekly_samples_array,
-                                                                          start_date=pd.Period(start_date,freq=config.freq),
+                                                                          start_date=pd.Period(start_date,freq=config.parameters["freq"]),
                                                  )
         )
     return week_ahead_forecasts, split_tss
@@ -185,7 +217,7 @@ def make_one_ts_prediction(config, df, location="LK Bad Dürkheim"):
     window_dates = []
     for window in range(1, config.windows):
         unique_weeks = test_set.index.unique()
-        selected_split_week = unique_weeks[-window*config.prediction_length : -window*config.prediction_length + 1]
+        selected_split_week = unique_weeks[-window*config.parameters["prediction_length"] : -window*config.parameters["prediction_length"] + 1]
         window_dates.append(datetime(selected_split_week.year[0], selected_split_week.month[0], selected_split_week.day[0]))
     #also add the last date available
     window_dates.append(config.test_end_time)
@@ -193,10 +225,10 @@ def make_one_ts_prediction(config, df, location="LK Bad Dürkheim"):
     #define the list of dfs of each testing window
     test_windows = [test_set.loc[test_set.index < window_date,:] for window_date in window_dates]
     #Format the train and test_set into a PandasDataset
-    train_set = PandasDataset.from_long_dataframe(dataframe=train_set, item_id='location', target="value", freq=config.freq)
-    test_set = PandasDataset(test_windows, target="value", freq=config.freq)
+    train_set = PandasDataset.from_long_dataframe(dataframe=train_set, item_id='location', target="value", freq=config.parameters["freq"])
+    test_set = PandasDataset(test_windows, target="value", freq=config.parameters["freq"])
     #train and evaluate the model
-    forecasts,tss = model(config, train_set, test_set, config.deeparestimator)
+    forecasts,tss = model(train_set, test_set, config.deeparestimator)
     #plot the forecasts
     fig, ax = plt.subplots(1, 1, figsize=(10, 7))
     plt.title(f'{location}')
