@@ -14,16 +14,19 @@ class Configuration:
             "freq" : "W-SUN",
             "context_length" : 4,   # in number of weeks
             "prediction_length" : 4,   # in number of weeks ->1 Week (104 Test Windows), 13W(8TW), 26W(4TW), 52W(2TW),... 
-            "num_layers" : 4,
+            "num_layers" : 2,
             "num_cells" : 32,
             "cell_type" : "lstm",
             "epochs" : 8,
             "learning_rate": 0.001,
             #"num_batches_per_epoch":50,
-            "batch_size":1,
+            "batch_size":32,
+            "dropout_rate":0.1,
             "distr_output" : NegativeBinomialOutput(),
-            "use_feat_dynamic_real" : True,
-            "use_feat_static_real" : True,
+            "use_feat_dynamic_real" : False,
+            "use_feat_static_real" : False,
+            "use_feat_static_cat" : False,
+            "cardinality" : None,
         }
         
         self.windows = int(104 / self.parameters["prediction_length"])
@@ -34,6 +37,7 @@ class Configuration:
                         num_layers=self.parameters["num_layers"],
                         num_cells=self.parameters["num_cells"],
                         cell_type=self.parameters["cell_type"],
+                        dropout_rate = self.parameters["dropout_rate"],
                         trainer=Trainer(epochs=self.parameters["epochs"],
                                        learning_rate=self.parameters["learning_rate"],
                                        #num_batches_per_epoch=self.parameters["num_batches_per_epoch"]
@@ -41,7 +45,9 @@ class Configuration:
                         batch_size=self.parameters["batch_size"],
                         distr_output=self.parameters["distr_output"],
                         use_feat_static_real=self.parameters["use_feat_static_real"],
+                        use_feat_static_cat=self.parameters["use_feat_static_cat"],
                         use_feat_dynamic_real=self.parameters["use_feat_dynamic_real"],
+                        cardinality=self.parameters["cardinality"],
                         )
         
         self.num_hidden_dimensions = [10]
@@ -50,7 +56,7 @@ class Configuration:
                                                               context_length=self.parameters["context_length"],
                                                               distr_output=self.parameters["distr_output"],
                                                               trainer=Trainer(epochs=self.parameters["epochs"],
-                                                                              learning_rate=self.parameters["learning_rate"],
+                                                                              #learning_rate=self.parameters["learning_rate"],
                                                                               #num_batches_per_epoch=self.parameters["num_batches_per_epoch"]
                                                                              ),
                                                               )

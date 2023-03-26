@@ -62,9 +62,11 @@ def train_test_split(config, df, with_features=False):
     if with_features:
         # Format the train and test_set into a PandasDataset with features
         train_set = PandasDataset.from_long_dataframe(dataframe=train_set, item_id='location', target="value", freq=config.parameters["freq"],
-                                                      feat_static_real=["population"]+locations, feat_dynamic_real=["week"])
+                                                      feat_static_real=["population"], feat_static_cat=list(locations),
+                                                      feat_dynamic_real=["week"])
         test_set = PandasDataset.from_long_dataframe(dataframe=test_set, item_id='location', target="value", freq=config.parameters["freq"],
-                                                     feat_static_real=["population"]+locations, feat_dynamic_real=["week"])
+                                                     feat_static_real=["population"], feat_static_cat=list(locations),
+                                                     feat_dynamic_real=["week"])
     else:
         # Format the train and test_set into a PandasDataset without features
         train_set = PandasDataset.from_long_dataframe(dataframe=train_set, item_id='location', target="value", freq=config.parameters["freq"])
@@ -91,9 +93,12 @@ def model(training_data, test_data, estimator):
                          predictor=predictor,  
                          num_samples=100,  
                          )
-    # unpack Iterator-Objects into lists
+    print(f"Ende make_evaluation_prediction: {datetime.now()}")
+    # unpack Iterator-Objects into lists (NOTE: this may take longer than the actual fitting process!) -> Some options for speeding up are: 1. lowering num_samples, 2. use DF's instead of lists, 3. parallelisation...
     forecasts = list(forecast_it)
     tss = list(ts_it)
+    print(f"Ende umformen in Listen: {datetime.now()}")
+    
     return forecasts, tss
 
 def forecast_by_week(config, train_set, test_set, locations, models_dict):
@@ -148,14 +153,15 @@ def update_deepAR_parameters(config, new_parameters):
                     num_layers=parameters["num_layers"],
                     num_cells=parameters["num_cells"],
                     cell_type=parameters["cell_type"],
+                    dropout_rate = parameters["dropout_rate"],              
                     trainer=Trainer(epochs=parameters["epochs"],
-                                    learning_rate=parameters["learning_rate"],
-                                    #num_batches_per_epoch=parameters["num_batches_per_epoch"]
-                                   ),
+                                    learning_rate=parameters["learning_rate"],),
                     batch_size=parameters["batch_size"],
                     distr_output=parameters["distr_output"],
                     use_feat_static_real=parameters["use_feat_static_real"],
                     use_feat_dynamic_real=parameters["use_feat_dynamic_real"],
+                    use_feat_static_cat=parameters["use_feat_static_cat"],
+                    cardinality=parameters["cardinality"],
                     )
     return deeparestimator
 
