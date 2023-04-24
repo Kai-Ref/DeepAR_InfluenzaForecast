@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from datetime import datetime
+import itertools
 import gluonts
 from gluonts.mx import Trainer, DeepAREstimator
 from gluonts.dataset.common import ListDataset
@@ -319,5 +320,87 @@ def plot_coverage(config, evaluator_df_dict, locations=None):
             axs[plotnumber].plot(config.quantiles, evaluator_df_dict[key].loc[evaluator_df_dict[key].item_id.isin(["aggregated {" + f"{week}" + "}"]), coverage_columns].T, label=f"{key}")
             axs[plotnumber].title.set_text(f"{week}-Week Ahead Coverage")
             axs[plotnumber].legend()
+            
+
+def generate_model_results_by_hp_dict(df, hp_search_space): 
+    model_results_by_hp = {}
+    
+    # save the relevant hyperaparameters for configurations (exclude dependent parameters)
+    hyperparameters = [hyperparameter for hyperparameter in hp_search_space.keys()\
+                       if not "cardinality" in hyperparameter]
+
+    # determine all possible combinations within the grid set up by combinatios of unique values
+    hp_grid_combinations = list(itertools.product(*[list(df["config/"+hp].unique()) for hp in hyperparameters]))
+
+    # build up an index out of the combination that is true for every value
+    for hp_grid_combination in hp_grid_combinations:
+        index_list = [df["config/"+k] ==v for k,v in zip(hyperparameters, hp_grid_combination)]
+        combined_index = np.logical_and.reduce(index_list)
+        df.loc[combined_index,"model_WIS_variance"] = df.loc[combined_index,"mean_WIS"].var()
+        df.loc[combined_index,"model_WIS_sd"] = np.sqrt(df.loc[combined_index,"mean_WIS"].var())
+        df.loc[combined_index,"model_WIS_mean"] = df.loc[combined_index,"mean_WIS"].mean()
+        df.loc[combined_index,"model_time_variance"] = df.loc[combined_index,"time_total_s"].var()
+        df.loc[combined_index,"model_time_sd"] = np.sqrt(df.loc[combined_index,"time_total_s"].var())
+        df.loc[combined_index,"model_time_mean"] = df.loc[combined_index,"time_total_s"].mean()
+        model_results_by_hp[str(hp_grid_combination)] = df[combined_index]
+    return model_results_by_hp
+
+def plot_model_results_by_hp(model_results_by_hp, number_of_plots=30, col="mean_WIS",figsize=(16, 9)):
+    dfs, labels = [], [] 
+    for key in list(model_results_by_hp.keys())[:number_of_plots]:
+        dfs.append(model_results_by_hp[key])
+        labels.append(key)
+    # Create a figure and axis object
+    fig, ax = plt.subplots(figsize=figsize)
+
+    # Create a list to hold the positions for each boxplot
+    pos = range(1, len(dfs) * 2, 2)
+
+    # Loop through each dataframe and plot a boxplot
+    for i, model_df in enumerate(dfs):
+        ax.boxplot(model_df[col], positions=[pos[i]])
+
+    # Set the x-axis ticks and tick labels
+    ax.set_xticks(pos)
+    ax.set_xticklabels(labels)
+
+    # Set the y-axis label
+    ax.set_ylabel(f'{col}')
+
+    # Set the title
+    ax.set_title(f'Boxplots of {number_of_plots} different models')
+
+    fig.autofmt_xdate(rotation=60, ha='right')
+    # Show the plot
+    plt.show()    
+            
+def hyperparameter_boxplots(results_df, hp_search_space, col="mean_WIS"):
+    """
+    Plot the hyperparameters as boxplots.
+    """
+    # Create a dict of filtered dfs and x_tick- renamings
+    hp_plots = dict()
+    for key in hp_search_space.keys():
+        if type(hp_search_space[key]) == type(dict()):
+            search_grid = hp_search_space[key][list(hp_search_space[key].keys())[0]]
+            hp_plots[key] = {"cols" : [f"{i} {key}" for i in search_grid], "df": [results_df.loc[results_df[f'config/{key}']==i][col] for i in search_grid]}
+    
+    # plot the boxplots
+    nrows = int(len(hp_plots.keys())/2) + int(len(hp_plots.keys())%2)
+    fig, axs = plt.subplots(nrows=nrows, ncols=2, figsize=(16, 9), sharey=True)
+    fig.tight_layout(pad=1.2)
+    plotnumber = [0, 0]
+    for key in hp_plots.keys():
+        if list(hp_plots.keys()).index(key)%2 == 1:
+            plotnumber[1] = 1
+        else:
+            if list(hp_plots.keys()).index(key) > 1:
+                plotnumber[0] += 1
+            plotnumber[1] = 0
+        axs[tuple(plotnumber)].boxplot(hp_plots[key]["df"])
+        axs[tuple(plotnumber)].set_title(key)
+        axs[tuple(plotnumber)].set_xticks([i for i in range(1, len(hp_plots[key]["df"])+1)], hp_plots[key]["cols"])
+        axs[tuple(plotnumber)].set_ylabel(col)
+    plt.show()
 
     
