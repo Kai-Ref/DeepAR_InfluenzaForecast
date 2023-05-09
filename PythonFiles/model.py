@@ -94,11 +94,11 @@ def model(training_data, test_data, estimator):
                          predictor=predictor,  
                          num_samples=100,  
                          )
-    print(f"Ende make_evaluation_prediction: {datetime.now()}")
+    #print(f"Ende make_evaluation_prediction: {datetime.now()}")
     # unpack Iterator-Objects into lists (NOTE: this may take longer than the actual fitting process!) -> Some options for speeding up are: 1. lowering num_samples, 2. use DF's instead of lists, 3. parallelisation...
     forecasts = list(forecast_it)
     tss = list(ts_it)
-    print(f"Ende umformen in Listen: {datetime.now()}")
+    #print(f"Ende umformen in Listen: {datetime.now()}")
     
     return forecasts, tss
 
@@ -323,6 +323,10 @@ def plot_coverage(config, evaluator_df_dict, locations=None):
             
 
 def generate_model_results_by_hp_dict(df, hp_search_space): 
+    """
+    Filter out each possible combination in the hp_search_space and correpsonding modelRun results. 
+    Then concatenate them again and check if the modelRuns are matching.
+    """
     model_results_by_hp = {}
     
     # save the relevant hyperaparameters for configurations (exclude dependent parameters)
@@ -334,8 +338,11 @@ def generate_model_results_by_hp_dict(df, hp_search_space):
 
     # build up an index out of the combination that is true for every value
     for hp_grid_combination in hp_grid_combinations:
+        # determine the index that combines the hp configuration
         index_list = [df["config/"+k] ==v for k,v in zip(hyperparameters, hp_grid_combination)]
         combined_index = np.logical_and.reduce(index_list)
+        # filter and combine the results for the combination
+        df.loc[combined_index,"shape"] = df.loc[combined_index,].shape[0]
         df.loc[combined_index,"model_WIS_variance"] = df.loc[combined_index,"mean_WIS"].var()
         df.loc[combined_index,"model_WIS_sd"] = np.sqrt(df.loc[combined_index,"mean_WIS"].var())
         df.loc[combined_index,"model_WIS_mean"] = df.loc[combined_index,"mean_WIS"].mean()
@@ -343,7 +350,19 @@ def generate_model_results_by_hp_dict(df, hp_search_space):
         df.loc[combined_index,"model_time_sd"] = np.sqrt(df.loc[combined_index,"time_total_s"].var())
         df.loc[combined_index,"model_time_mean"] = df.loc[combined_index,"time_total_s"].mean()
         model_results_by_hp[str(hp_grid_combination)] = df[combined_index]
-    return model_results_by_hp
+    # 
+    overall_df = pd.DataFrame()
+    for key in list(model_results_by_hp.keys())[:]:
+        overall_df = pd.concat([overall_df, model_results_by_hp[key]])
+
+    modelruns_per_combination = pd.DataFrame(overall_df["shape"].value_counts())
+    modelruns_per_combination.index.names = ["modelruns_per_combination"]
+    modelruns_per_combination.rename(columns = {'shape':'total_modelruns'}, inplace = True)
+    modelruns_per_combination['independent_combinations'] = modelruns_per_combination['total_modelruns'] / modelruns_per_combination.index
+    if len(modelruns_per_combination)>1:
+        print("There are combinations with fewer modelRuns!!")
+    print(modelruns_per_combination)
+    return model_results_by_hp, overall_df
 
 def plot_model_results_by_hp(model_results_by_hp, number_of_plots=30, col="mean_WIS",figsize=(16, 9)):
     dfs, labels = [], [] 
@@ -403,4 +422,31 @@ def hyperparameter_boxplots(results_df, hp_search_space, col="mean_WIS"):
         axs[tuple(plotnumber)].set_ylabel(col)
     plt.show()
 
+def hp_color_plot(overall_df, hp_search_space):
+    added_cols = ["shape", "model_WIS_mean", "model_WIS_variance", "model_WIS_sd","model_time_mean", "model_time_variance",\
+              "model_time_sd"]
+    unique_df = overall_df[added_cols+[col for col in overall_df.columns if ("config" in col)&("cardinality" not in col)]].drop_duplicates()
+    colors = ["red", "green","blue", "yellow", "purple"]
+    without_card =[key for key in hp_search_space.keys() if "cardinality" not in key]
+    nrows = int(len(without_card)/2) + int(len(without_card)%2)
+    fig, axs = plt.subplots(nrows=nrows, ncols=2, figsize=(16, 16), sharey=True)
+    fig.tight_layout(pad=2.9)
+    plotnumber = [0, 0]
+    for key in without_card:
+        column = "config/"+key
+        if list(without_card).index(key)%2 == 1:
+            plotnumber[1] = 1
+        else:
+            if list(without_card).index(key) > 1:
+                plotnumber[0] += 1
+            plotnumber[1] = 0
+        values = unique_df[column].unique().tolist()
+        for value in values:
+            print_df = unique_df.loc[unique_df[column]==value,:]
+            axs[tuple(plotnumber)].scatter(print_df["model_WIS_mean"],print_df["model_time_mean"], c=colors[values.index(value)], label=value)
+        axs[tuple(plotnumber)].legend()
+        axs[tuple(plotnumber)].set_title(key)
+        axs[tuple(plotnumber)].set_ylabel("model_time_mean")
+        axs[tuple(plotnumber)].set_xlabel("model_WIS_mean")
+    plt.show()
     
