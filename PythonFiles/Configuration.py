@@ -5,10 +5,15 @@ from gluonts.mx.distribution import NegativeBinomialOutput
 class Configuration:
     def __init__(self):
         #Time parameter
-        self.train_start_time = datetime(2010,1,1,0,0,0)
-        self.train_end_time = datetime(2017,12,31,23,0,0)
-        self.test_end_time = datetime(2019,12,31,23,0,0)
-        
+        self.train_start_time = datetime(1999,1,1,0,0,0)#datetime(2010,1,1,0,0,0)
+        self.train_end_time = datetime(2016,9,30,23,0,0)
+        self.test_end_time = datetime(2018,9,30,23,0,0)
+        self.validation_end_time = datetime(2020, 9, 30, 23, 0, 0)
+        # colors to use for the plots
+        self.colors = ["#003f5c", "#ff0033", "#47c9b8", "#F8D7DA", "#B7D1CD", "#F5B0CB", "#9FB1BC", "#FEECC2",
+                       "#FFE5D9", "#A4C2E0", "#D9EAD3", "#C3E0E5", "#F5C9B0","#b3a2c7", "#e6a0c4","#9ac1c6",
+                       "#d1bea8", "#f6b870", "#a5d3cd", "#c291a5","#fed98e", "#72c9c2", "#fca6a3", "#6db8ca", "#ffcf84",
+                       "#a8c6d1", "#ffa85e", "#f6a6b2", "#89c2c9", "#a7d49b"]
         
         self.parameters = {
             "freq" : "W-SUN",
@@ -49,15 +54,25 @@ class Configuration:
                         use_feat_dynamic_real=self.parameters["use_feat_dynamic_real"],
                         cardinality=self.parameters["cardinality"],
                         )
-        
-        self.num_hidden_dimensions = [10]
-        self.feedforwardestimator = SimpleFeedForwardEstimator(num_hidden_dimensions=self.num_hidden_dimensions,
-                                                              prediction_length=self.parameters["prediction_length"],
-                                                              context_length=self.parameters["context_length"],
-                                                              distr_output=self.parameters["distr_output"],
-                                                              trainer=Trainer(epochs=self.parameters["epochs"],
+        self.fnnparameters = {
+            "context_length" : 4,   # in number of weeks
+            "prediction_length" : 4,   # in number of weeks ->1 Week (104 Test Windows), 13W(8TW), 26W(4TW), 52W(2TW),... 
+            "epochs" : 8,
+            "distr_output" : NegativeBinomialOutput(),
+            "num_hidden_dimensions":[10],
+            "num_batches_per_epoch":50,
+            "batch_normalization":False,
+            "batch_size":32,
+        }
+        self.feedforwardestimator = SimpleFeedForwardEstimator(num_hidden_dimensions=self.fnnparameters["num_hidden_dimensions"],
+                                                              prediction_length=self.fnnparameters["prediction_length"],
+                                                              context_length=self.fnnparameters["context_length"],
+                                                              distr_output=self.fnnparameters["distr_output"],
+                                                              batch_size=self.fnnparameters["batch_size"],
+                                                              batch_normalization=self.fnnparameters["batch_normalization"],
+                                                              trainer=Trainer(epochs=self.fnnparameters["epochs"],
                                                                               #learning_rate=self.parameters["learning_rate"],
-                                                                              #num_batches_per_epoch=self.parameters["num_batches_per_epoch"]
+                                                                              num_batches_per_epoch=self.fnnparameters["num_batches_per_epoch"],
                                                                              ),
                                                               )
         

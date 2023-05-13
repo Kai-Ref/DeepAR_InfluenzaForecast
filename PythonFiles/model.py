@@ -248,13 +248,13 @@ def make_one_ts_prediction(config, df, location="LK Bad Dürkheim"):
                            (one_ts_df.index >= config.train_start_time), 'value'])
     plt.grid(which="both")
     #define the colors to use for each different window
-    color = ["g", "r", "purple", "black", "yellow", "grey"] * config.windows
+    colors = config.colors * config.windows
     for k in range(0, config.windows):
         forecast_entry = forecasts[k]
         prediction_intervals = (50.0, 90.0)
         legend = ["train_set observations", "median prediction"] +\
                  [f"{k}% prediction interval" for k in prediction_intervals][::-1]
-        forecast_entry.plot(prediction_intervals=prediction_intervals, color=color[k])
+        forecast_entry.plot(prediction_intervals=prediction_intervals, color=colors[k])
     plt.grid(which="both")
     plt.show()
     return forecasts, tss
@@ -285,12 +285,12 @@ def print_forecasts_by_week(config, corrected_df, forecast_dict, locations, week
                                     (corrected_df.index >= plot_start_time)].index),
                      corrected_df.loc[(corrected_df['location'] == location) &
                                    (corrected_df.index <= config.test_end_time) &
-                                   (corrected_df.index >= plot_start_time),'value'])
+                                   (corrected_df.index >= plot_start_time),'value'], c=config.colors[0])
             plt.grid(which="both")
             # select the right week-ahead forecast entry for a set location
             forecast_entry = forecast_dict[list(forecast_dict.keys())[week_ahead-1]][locations.index(location)]
             prediction_intervals = (50.0, 90.0)
-            forecast_entry.plot(prediction_intervals=prediction_intervals, color="g")
+            forecast_entry.plot(prediction_intervals=prediction_intervals, color=config.colors[2])
             plt.grid(which="both")
             plt.show()
 
@@ -315,9 +315,9 @@ def plot_coverage(config, evaluator_df_dict, locations=None):
             plotnumber = (1, 1)
         for key in evaluator_df_dict.keys():
             week_coverage_dict[week] = evaluator_df_dict[key].loc[evaluator_df_dict[key].item_id.isin(["aggregated {"+ f"{week}" + "}"]), coverage_columns]
-            axs[plotnumber].plot([0.0, 1.0], [0.0, 1.0])
-            axs[plotnumber].scatter(config.quantiles, evaluator_df_dict[key].loc[evaluator_df_dict[key].item_id.isin(["aggregated {" + f"{week}" + "}"]), coverage_columns])
-            axs[plotnumber].plot(config.quantiles, evaluator_df_dict[key].loc[evaluator_df_dict[key].item_id.isin(["aggregated {" + f"{week}" + "}"]), coverage_columns].T, label=f"{key}")
+            axs[plotnumber].plot([0.0, 1.0], [0.0, 1.0], c= config.colors[0])
+            axs[plotnumber].scatter(config.quantiles, evaluator_df_dict[key].loc[evaluator_df_dict[key].item_id.isin(["aggregated {" + f"{week}" + "}"]), coverage_columns], c=config.colors[0])
+            axs[plotnumber].plot(config.quantiles, evaluator_df_dict[key].loc[evaluator_df_dict[key].item_id.isin(["aggregated {" + f"{week}" + "}"]), coverage_columns].T, label=f"{key}", c=config.colors[0])
             axs[plotnumber].title.set_text(f"{week}-Week Ahead Coverage")
             axs[plotnumber].legend()
             
@@ -346,11 +346,13 @@ def generate_model_results_by_hp_dict(df, hp_search_space):
         df.loc[combined_index,"model_WIS_variance"] = df.loc[combined_index,"mean_WIS"].var()
         df.loc[combined_index,"model_WIS_sd"] = np.sqrt(df.loc[combined_index,"mean_WIS"].var())
         df.loc[combined_index,"model_WIS_mean"] = df.loc[combined_index,"mean_WIS"].mean()
+        df.loc[combined_index,"model_WIS_median"] = df.loc[combined_index,"mean_WIS"].median()
         df.loc[combined_index,"model_time_variance"] = df.loc[combined_index,"time_total_s"].var()
         df.loc[combined_index,"model_time_sd"] = np.sqrt(df.loc[combined_index,"time_total_s"].var())
         df.loc[combined_index,"model_time_mean"] = df.loc[combined_index,"time_total_s"].mean()
+        df.loc[combined_index,"model_time_median"] = df.loc[combined_index,"time_total_s"].median()
         model_results_by_hp[str(hp_grid_combination)] = df[combined_index]
-    # 
+        
     overall_df = pd.DataFrame()
     for key in list(model_results_by_hp.keys())[:]:
         overall_df = pd.concat([overall_df, model_results_by_hp[key]])
@@ -364,20 +366,51 @@ def generate_model_results_by_hp_dict(df, hp_search_space):
     print(modelruns_per_combination)
     return model_results_by_hp, overall_df
 
-def plot_model_results_by_hp(model_results_by_hp, number_of_plots=30, col="mean_WIS",figsize=(16, 9)):
-    dfs, labels = [], [] 
-    for key in list(model_results_by_hp.keys())[:number_of_plots]:
+def plot_model_results_by_hp(config, model_results_by_hp, hp_search_space, number_of_plots=30, col="mean_WIS",figsize=(16, 9), overall_df=None, sort_by="model_WIS_mean", plottype="unordered", plot = "bp"):
+    '''
+    Creates boxplots of different combinations. 
+    
+    col: "mean_WIS", "time_this_iter_s"
+    sort_by: "mean_WIS", "time_this_iter_s", "model_WIS_mean", "model_WIS_variance", "model_WIS_sd", "model_WIS_median", "model_time_mean", "model_time_variance", "model_time_sd",\
+             "model_time_median"(, "shape") 
+    plottype: "unordered"(not ordered), "best" or "worst"
+    '''
+    number_of_plots = min(number_of_plots, len(model_results_by_hp.keys()))
+    if (type(overall_df) != type(None)) & (plottype != "unordered"):
+        # create a sorted_df, from which the best/worst combinations can be plotted
+        column_names = ["config/"+str(hyperparameter) for hyperparameter in hp_search_space.keys() if not "cardinality" in hyperparameter]
+        sorted_df = overall_df.sort_values(sort_by)[[col for col in column_names] + [sort_by]].drop_duplicates()
+        sorted_hps=[*zip(*map(sorted_df[[col for col in column_names]].get, sorted_df[[col for col in column_names]]))]
+        sorted_hps = [str(hp) for hp in sorted_hps]
+        #sorted_hps = np.unique(sorted_hps).tolist() -> may be needed if we filter by mean_WIS (individual modelrun filtering) and duplicates occur
+        if plottype == "best":
+            hp_configurations = sorted_hps
+        if plottype == "worst":
+            hp_configurations = sorted_hps
+            hp_configurations.reverse()
+    if plottype == "unordered":
+        hp_configurations = list(model_results_by_hp.keys())
+    dfs, labels, lengths = [], [], [] 
+    for key in hp_configurations[:number_of_plots]:
         dfs.append(model_results_by_hp[key])
+        lengths.append(len(model_results_by_hp[key]))
         labels.append(key)
+    lengths = np.unique(lengths).tolist()
     # Create a figure and axis object
     fig, ax = plt.subplots(figsize=figsize)
 
-    # Create a list to hold the positions for each boxplot
+    # Create a list of the positions for each boxplot
     pos = range(1, len(dfs) * 2, 2)
 
-    # Loop through each dataframe and plot a boxplot
-    for i, model_df in enumerate(dfs):
-        ax.boxplot(model_df[col], positions=[pos[i]])
+    if plot == "scatter":
+        # Loop through each dataframe and plot a boxplot
+        for i, model_df in enumerate(dfs):
+            for value in model_df[col]:
+                ax.scatter(pos[i], value, marker =".", c=config.colors[0])#, fc="None", ec="black")
+    else:
+        # Loop through each dataframe and plot a boxplot
+        for i, model_df in enumerate(dfs):
+            ax.boxplot(model_df[col], positions=[pos[i]])
 
     # Set the x-axis ticks and tick labels
     ax.set_xticks(pos)
@@ -387,11 +420,11 @@ def plot_model_results_by_hp(model_results_by_hp, number_of_plots=30, col="mean_
     ax.set_ylabel(f'{col}')
 
     # Set the title
-    ax.set_title(f'Boxplots of {number_of_plots} different models')
+    ax.set_title(f'Boxplots of {plottype} {number_of_plots} models based on {sort_by} and {lengths} runs per combination.')
 
     fig.autofmt_xdate(rotation=60, ha='right')
     # Show the plot
-    plt.show()    
+    plt.show()  
             
 def hyperparameter_boxplots(results_df, hp_search_space, col="mean_WIS"):
     """
@@ -422,11 +455,11 @@ def hyperparameter_boxplots(results_df, hp_search_space, col="mean_WIS"):
         axs[tuple(plotnumber)].set_ylabel(col)
     plt.show()
 
-def hp_color_plot(overall_df, hp_search_space):
-    added_cols = ["shape", "model_WIS_mean", "model_WIS_variance", "model_WIS_sd","model_time_mean", "model_time_variance",\
-              "model_time_sd"]
+def hp_color_plot(config, overall_df, hp_search_space, x_axis="model_WIS_mean", y_axis="model_time_mean"):
+    added_cols =["model_WIS_mean", "model_WIS_variance", "model_WIS_sd", "model_WIS_median",
+                 "model_time_mean", "model_time_variance", "model_time_sd","model_time_median", "shape"] 
+
     unique_df = overall_df[added_cols+[col for col in overall_df.columns if ("config" in col)&("cardinality" not in col)]].drop_duplicates()
-    colors = ["red", "green","blue", "yellow", "purple"]
     without_card =[key for key in hp_search_space.keys() if "cardinality" not in key]
     nrows = int(len(without_card)/2) + int(len(without_card)%2)
     fig, axs = plt.subplots(nrows=nrows, ncols=2, figsize=(16, 16), sharey=True)
@@ -443,10 +476,10 @@ def hp_color_plot(overall_df, hp_search_space):
         values = unique_df[column].unique().tolist()
         for value in values:
             print_df = unique_df.loc[unique_df[column]==value,:]
-            axs[tuple(plotnumber)].scatter(print_df["model_WIS_mean"],print_df["model_time_mean"], c=colors[values.index(value)], label=value)
+            axs[tuple(plotnumber)].scatter(print_df[x_axis],print_df[y_axis], c=config.colors[values.index(value)], label=value)
         axs[tuple(plotnumber)].legend()
         axs[tuple(plotnumber)].set_title(key)
-        axs[tuple(plotnumber)].set_ylabel("model_time_mean")
-        axs[tuple(plotnumber)].set_xlabel("model_WIS_mean")
+        axs[tuple(plotnumber)].set_ylabel(y_axis)
+        axs[tuple(plotnumber)].set_xlabel(x_axis)
     plt.show()
     
