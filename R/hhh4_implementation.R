@@ -19,13 +19,22 @@ population_vector <- read.csv("Notebooks/DataProcessing/PopulationVector.csv",
 
 
 df <- pivot_wider(data[c('value', 'date', 'location')], names_from = location, values_from = value)
+print(df[1:4,"date"])
+
+# Filter the DataFrame for dates before '30.09.2016'
+train_length <- length(unique(df[df$date < as.Date("2016-09-30"), ]$date))
+test_length <- length(unique(df[df$date < as.Date("2018-09-30"), ]$date))
+
+
+
 df[is.na(df)] <- 0
 df_sts <-sts(as.matrix(subset(df, select=-c(date))),
-             start = c(2002, 1) , frequency = 52.25,# maybe take len(df)/years here
+             start = c(2001, 1) , frequency = 52.25,# maybe take len(df)/years here
              neighbourhood = as.matrix(adjacentMatrix),
              population = as.vector(t(population_vector)))
 plot(df_sts, type = observed ~ time)
 
+print(df_sts)
 
 ?hhh4
 
@@ -93,7 +102,7 @@ fluModel <- list(
   
   verbose = TRUE,
   
-  subset = 2:364) # important for prediction: fit only to first seven years
+  subset = 1:train_length) # important for prediction: fit only to train_length of available data
 
 #print(population(fluBYBW))
 print(population(df_sts))
@@ -138,14 +147,15 @@ plot(fluFit, type = "neweights", xlab = "adjacency order")
 osa <- oneStepAhead(fluFit, tp = c(364, 415), # tp is shifted by one, see documentation
                     
                     type = "final") # "final" means the model is not updated after each week.
-confint(osa, level = c(0.1,0.5,0.9))
-?confint
+colMeans(confint(osa, level = c(0.95)))
 
 # if "final" is used this is really quick, otherwise it will take very long.
 
 # plot fan plot:
 
 plot(osa, start = 2000, unit  =2)
+
+
 
 # adding this to the original plot is really tedious...
 
@@ -166,6 +176,7 @@ vignette("hhh4addon")
 vignette("hhh4_spacetime")
 
 path_forecast <- predictive_moments(fluFit, t_condition = 364, lgt = 5)
+?path_forecast
 
 fanplot_prediction(path_forecast)
 
@@ -196,6 +207,7 @@ plot(dnbinom(0:20, mu = mu[1, 1], size = size[1, 1]))
 qnbinom(p = c(0.025, 0.1, 0.25, 0.5, 0.75, 0.9, 0.975), 
         
         mu = mu["t=369", "LK Bad Dürkheim"], size = size["t=369", "LK Bad Dürkheim"])
+
 
 ## End(Not run)
 
