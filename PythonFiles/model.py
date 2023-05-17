@@ -302,7 +302,8 @@ def plot_coverage(config, evaluator_df_dict, locations=None):
     """
     week_coverage_dict = {}
     coverage_columns = [col for col in evaluator_df_dict[list(evaluator_df_dict.keys())[0]].columns if "Coverage" in col]
-    coverage_columns.remove("MAE_Coverage")
+    if "MAE_Coverage" in coverage_columns:
+        coverage_columns.remove("MAE_Coverage")
     fig, axs = plt.subplots(nrows=2, ncols=2, figsize=(16, 9))
     for week in range(1,5):
         if week == 1:
@@ -317,7 +318,7 @@ def plot_coverage(config, evaluator_df_dict, locations=None):
             week_coverage_dict[week] = evaluator_df_dict[key].loc[evaluator_df_dict[key].item_id.isin(["aggregated {"+ f"{week}" + "}"]), coverage_columns]
             axs[plotnumber].plot([0.0, 1.0], [0.0, 1.0], c= config.colors[0])
             axs[plotnumber].scatter(config.quantiles, evaluator_df_dict[key].loc[evaluator_df_dict[key].item_id.isin(["aggregated {" + f"{week}" + "}"]), coverage_columns], c=config.colors[0])
-            axs[plotnumber].plot(config.quantiles, evaluator_df_dict[key].loc[evaluator_df_dict[key].item_id.isin(["aggregated {" + f"{week}" + "}"]), coverage_columns].T, label=f"{key}", c=config.colors[0])
+            axs[plotnumber].plot(config.quantiles, evaluator_df_dict[key].loc[evaluator_df_dict[key].item_id.isin(["aggregated {" + f"{week}" + "}"]), coverage_columns].T, label=f"{key}", c=config.colors[list(evaluator_df_dict.keys()).index(key)+1])
             axs[plotnumber].title.set_text(f"{week}-Week Ahead Coverage")
             axs[plotnumber].legend()
             
