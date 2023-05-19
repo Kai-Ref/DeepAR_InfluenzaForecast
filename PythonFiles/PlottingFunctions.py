@@ -3,47 +3,68 @@ import numpy as np
 import matplotlib.pyplot as plt
 from datetime import datetime
 import itertools
-#import gluonts
-#from gluonts.mx import Trainer, DeepAREstimator
-#from gluonts.dataset.common import ListDataset
-#from gluonts.dataset.pandas import PandasDataset
-#from gluonts.evaluation import make_evaluation_predictions, Evaluator
-#from gluonts.dataset.split import split, TestData
-#from gluonts.dataset.util import to_pandas
-#from gluonts.dataset.rolling_dataset import generate_rolling_dataset,StepStrategy
-# Evaluation Plots
 
-
-def print_forecasts_by_week(config, corrected_df, forecast_dict, locations, week_ahead_list, plot_begin_at_trainstart=False):
+def print_forecasts_by_week(config, df, forecasts_dict, locations, week_ahead_list, plot_begin_at_trainstart=False, savepath=None, filename=None):
     '''
+    @Overwritten 
     Prints out plots for the given week-Ahead forecasts of given locations. It needs the initial corrected dataframe, as well as the forecast_dict
     that contains the different week-ahead forecasts.
     The start of the plot time axis, can be set to the training start time (TRUE) or the testing start time (FALSE).
     '''
-    for location in locations:
+    if (savepath != None)&(filename!=None):
+        import os
+    all_locations=list(df.location.unique())
+    for key in list(forecasts_dict.keys()):
+        forecast_dict = forecasts_dict[key] 
         for week_ahead in week_ahead_list:
-            #plot the forecasts
-            fig, ax = plt.subplots(1, 1, figsize=(10, 7))
-            plt.title(f'{location} - WA{week_ahead}')
-            # determine the beginning of the time series
-            if plot_begin_at_trainstart == True:
-                plot_start_time = config.train_start_time
-            else:
-                plot_start_time = config.train_end_time
-            #first plot the time series as a whole (x-axis: Date, y-axis: influenza-values)
-            plt.plot((corrected_df.loc[(corrected_df['location'] == location) &
-                                    (corrected_df.index <= config.test_end_time) &
-                                    (corrected_df.index >= plot_start_time)].index),
-                     corrected_df.loc[(corrected_df['location'] == location) &
-                                   (corrected_df.index <= config.test_end_time) &
-                                   (corrected_df.index >= plot_start_time),'value'], c=config.colors[0])
-            plt.grid(which="both")
-            # select the right week-ahead forecast entry for a set location
-            forecast_entry = forecast_dict[list(forecast_dict.keys())[week_ahead-1]][locations.index(location)]
-            prediction_intervals = (50.0, 90.0)
-            forecast_entry.plot(prediction_intervals=prediction_intervals, color=config.colors[2])
-            plt.grid(which="both")
+            nrows = int(len(locations)/2) + int(len(locations)%2)
+            fig, ax = plt.subplots(nrows, 2, figsize=(16, 9))
+            fig.tight_layout(pad=2.9)
+            plotnumber = [0, 0]
+            for location in locations:
+                if list(locations).index(location)%2 == 1:
+                    plotnumber[1] = 1
+                else:
+                    if list(locations).index(location) > 1:
+                        plotnumber[0] += 1
+                    plotnumber[1] = 0
+                #plot the forecasts
+                ax[tuple(plotnumber)].set_title(f'{location} - {week_ahead} Week Ahead Forecast')
+                plt.xticks(rotation=0)
+                # determine the beginning of the time series
+                if plot_begin_at_trainstart == True:
+                    plot_start_time = config.train_start_time
+                elif type(plot_begin_at_trainstart)==type(datetime(2016,1,1,1,1,1)):
+                    plot_start_time = plot_begin_at_trainstart
+                else:
+                    plot_start_time = config.train_end_time
+                #first plot the time series as a whole (x-axis: Date, y-axis: influenza-values)
+                ax[tuple(plotnumber)].plot((df.loc[(df['location'] == location) &
+                                        (df.index <= config.test_end_time) &
+                                        (df.index >= plot_start_time)].index),
+                         df.loc[(df['location'] == location) &
+                                       (df.index <= config.test_end_time) &
+                                       (df.index >= plot_start_time),'value'], c=config.colors[0])
+                #ax[tuple(plotnumber)].grid(which="both")
+                # run the overwritten version of the forecast_entry.plot() function to plot to a specific axis and change colors
+                if key == "hhh4":
+                    # Here forecast_entry is a df
+                    forecast_entry = forecast_dict[list(forecast_dict.keys())[week_ahead-1]].copy()
+                    plot_forecast_entry(config, forecast_entry.loc[forecast_entry["location"]==location], show_mean=False, ax=ax[tuple(plotnumber)], mediancolor=config.colors[1], fillcolor=config.colors[2], axis=True,\
+                                        prediction_intervals=(50.0, 80.0), R_entry=True)
+                else:
+                    # select the right week-ahead forecast entry for a set location
+                    forecast_entry = forecast_dict[list(forecast_dict.keys())[week_ahead-1]][all_locations.index(location)]
+                    plot_forecast_entry(config, forecast_entry, show_mean=False,ax=ax[tuple(plotnumber)], mediancolor=config.colors[1],fillcolor=config.colors[2], axis=True, prediction_intervals=(50.0, 80.0))
+                    #forecast_entry.plot(prediction_intervals=prediction_intervals, color=config.colors[0])
+                plt.xticks([plot_start_time, datetime(2017,1,1), datetime(2018,1,1), config.test_end_time], rotation=0, ha="center")
+                plt.legend(loc="upper left")
+            if (savepath != None)&(filename!=None):
+                os.chdir(savepath)
+                plt.savefig(f"{filename}{key}_{week_ahead}_WA.png")
+                os.chdir('/home/reffert/DeepAR_InfluenzaForecast')
             plt.show()
+                
 
 
 def plot_coverage(config, evaluator_df_dict, locations=None):
@@ -143,7 +164,7 @@ def hyperparameter_boxplots(results_df, hp_search_space, col="mean_WIS"):
     for key in hp_search_space.keys():
         if type(hp_search_space[key]) == type(dict()):
             search_grid = hp_search_space[key][list(hp_search_space[key].keys())[0]]
-            hp_plots[key] = {"cols" : [f"{i} {key}" for i in search_grid], "df": [results_df.loc[results_df[f'config/{key}']==i][col] for i in search_grid]}
+            hp_plots[key] = {"cols" : [f"{i} {key}" for i in search_grid], "df": [results_df.loc[results_df[f'config/{key}']==str(i), col] if (type(i)==type(list())) else results_df.loc[results_df[f'config/{key}']==i, col] for i in search_grid]} # the if i == list is necessary for the num_hidden_layers of the FNN
     
     # plot the boxplots
     nrows = int(len(hp_plots.keys())/2) + int(len(hp_plots.keys())%2)
@@ -192,7 +213,7 @@ def hp_color_plot(config, overall_df, hp_search_space, x_axis="model_WIS_mean", 
     plt.show()
     
     
-def plot_forecast_entry(config, fe, show_mean=False,ax=plt, prediction_intervals=(50.0, 90.0), meancolor=None, mediancolor=None, fillcolor=None, axis=False):
+def plot_forecast_entry(config, fe, show_mean=False, ax=plt, prediction_intervals=(50.0, 80.0), meancolor=None, mediancolor=None, fillcolor=None, axis=False, R_entry=False):
     '''
     Overwritten version of the forecast_entry.plot() method.
     Includes customizable colors and axis.
@@ -218,40 +239,60 @@ def plot_forecast_entry(config, fe, show_mean=False,ax=plt, prediction_intervals
     def alpha_for_percentile(p):
         return (p / 100.0) ** 0.3
 
-    ps_data = [fe.quantile(p / 100.0) for p in percentiles_sorted]
-    i_p50 = len(percentiles_sorted) // 2
-    # Plotting the Median of the forecast entry
-    p50_data = ps_data[i_p50]
-    p50_series = pd.Series(data=p50_data, index=fe.index)
     if axis == True:
         plt.sca(ax)
-    p50_series.plot(color=mediancolor, ls="-", label="median")
-    
-    # Plotting the mean of the forecast entry
-    if show_mean:
-        mean_data = np.mean(fe._sorted_samples, axis=0)
-        pd.Series(data=mean_data, index=fe.index).plot(
-            color=meancolor,
-            ls=":",
-            label=f"mean",
-        )
-    # Plotting the 
+    if R_entry:
+        ps_data = [(p / 100.0) for p in percentiles_sorted]
+        plt.plot(fe.date, fe["0.5"], c=mediancolor, label=f"median")
+    else:
+        ps_data = [fe.quantile(p / 100.0) for p in percentiles_sorted]
+        i_p50 = len(percentiles_sorted) // 2
+        # Plotting the Median of the forecast entry
+        p50_data = ps_data[i_p50]
+        p50_series = pd.Series(data=p50_data, index=fe.index)
+        p50_series.plot(color=mediancolor, ls="-", label="median")
+
+        # Plotting the mean of the forecast entry
+        if show_mean:
+            mean_data = np.mean(fe._sorted_samples, axis=0)
+            pd.Series(data=mean_data, index=fe.index).plot(
+                color=meancolor,
+                ls=":",
+                label=f"mean",
+            )
+        # Plotting the 
     for i in range(len(percentiles_sorted) // 2):
         ptile = percentiles_sorted[i]
         alpha = alpha_for_percentile(ptile)
-        plt.fill_between(
-            fe.index,
-            ps_data[i],
-            ps_data[-i - 1],
-            facecolor=fillcolor,
-            alpha=alpha,
-            interpolate=True
-        )
-        # Hack to create labels for the error intervals. Doesn't actually
-        # plot anything, because we only pass a single data point
-        pd.Series(data=p50_data[:1], index=fe.index[:1]).plot(
-            color=config.colors[2],
-            alpha=alpha,
-            linewidth=10,
-            label=f"{100 - ptile * 2}%",
-        )
+        if R_entry:
+            plt.fill_between(fe.date, fe[f"{ps_data[i]}"],fe[f"{ps_data[-i - 1]}"],
+                facecolor=fillcolor,
+                alpha=alpha,
+                interpolate=True, 
+                label=f"{100 - ptile * 2}%"
+            )
+            # Hack to create labels for the error intervals. Doesn't actually
+            # plot anything, because we only pass a single data point
+            pd.Series(data=fe["0.5"].tolist()[:1], index=fe["date"].tolist()[:1]).plot(
+                color=fillcolor,
+                alpha=alpha,
+                linewidth=10,
+                label=f"{100 - ptile * 2}%",
+            )
+        else:
+            plt.fill_between(
+                fe.index,
+                ps_data[i],
+                ps_data[-i - 1],
+                facecolor=fillcolor,
+                alpha=alpha,
+                interpolate=True
+            )
+            # Hack to create labels for the error intervals. Doesn't actually
+            # plot anything, because we only pass a single data point
+            pd.Series(data=p50_data[:1], index=fe.index[:1]).plot(
+                color=config.colors[2],
+                alpha=alpha,
+                linewidth=10,
+                label=f"{100 - ptile * 2}%",
+            )

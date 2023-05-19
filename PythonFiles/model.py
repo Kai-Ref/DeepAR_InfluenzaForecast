@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import mxnet as mx
 import matplotlib.pyplot as plt
 from datetime import datetime
 import itertools
@@ -104,13 +105,20 @@ def model(training_data, test_data, estimator):
     
     return forecasts, tss
 
-def forecast_by_week(config, train_set, test_set, locations, models_dict):
+def forecast_by_week(config, train_set, test_set, locations, models_dict, seed=None, results_dict=None):
+    if seed !=None:
+        mx.random.seed(seed)
+        np.random.seed(seed)
     #define the dicts that are going to be output later on
     evaluator_df_dict = {}
     forecasts_dict = {}
     #iterate through the given models and fit them
     for key in models_dict.keys():
-        forecasts, tss = model(train_set, test_set, models_dict[key])
+        if results_dict == None:
+            forecasts, tss = model(train_set, test_set, models_dict[key])
+        else:
+            forecasts = results_dict[f"{key}_forecasts"]
+            tss = results_dict[f"{key}_tss"]
         # Splitting the forecasts into their weekly contribution
         split_tss = split_forecasts_by_week(config, forecasts, tss, locations, 4, equal_time_frame=True)[1]
         forecast_dict ={1 : split_forecasts_by_week(config, forecasts, tss, locations, 1, equal_time_frame=True)[0],
@@ -137,36 +145,6 @@ def forecast_by_week(config, train_set, test_set, locations, models_dict):
         forecasts_dict[key] = forecast_dict
     return forecasts_dict, evaluator_df_dict
 
-
-def update_deepAR_parameters(config, new_parameters):
-    ''' 
-    This function updates the DeepAR-configuration in the Configuration.py file. 
-    Note that new_parameters must be a dict containing the exact keys used in config.parameters.
-    '''
-    parameters = config.parameters.copy()
-    for key in new_parameters.keys():
-        if key in parameters.keys():
-            parameters[key] = new_parameters[key]
-        else:
-            print(f"This key {key} isn't available in config.parameters! Thus the default config will maintain.")
-    #update the deeparestimator in config
-    deeparestimator = DeepAREstimator(freq=parameters["freq"],
-                    context_length=parameters["context_length"],
-                    prediction_length=parameters["prediction_length"],
-                    num_layers=parameters["num_layers"],
-                    num_cells=parameters["num_cells"],
-                    cell_type=parameters["cell_type"],
-                    dropout_rate = parameters["dropout_rate"],              
-                    trainer=Trainer(epochs=parameters["epochs"],
-                                    learning_rate=parameters["learning_rate"],),
-                    batch_size=parameters["batch_size"],
-                    distr_output=parameters["distr_output"],
-                    use_feat_static_real=parameters["use_feat_static_real"],
-                    use_feat_dynamic_real=parameters["use_feat_dynamic_real"],
-                    use_feat_static_cat=parameters["use_feat_static_cat"],
-                    cardinality=parameters["cardinality"],
-                    )
-    return deeparestimator
 
 
 def split_forecasts_by_week(config, forecasts, tss, locations, week, equal_time_frame=False):
@@ -260,47 +238,3 @@ def make_one_ts_prediction(config, df, location="LK Bad Dürkheim"):
     plt.grid(which="both")
     plt.show()
     return forecasts, tss
-
-def generate_model_results_by_hp_dict(df, hp_search_space): 
-    """
-    Filter out each possible combination in the hp_search_space and correpsonding modelRun results. 
-    Then concatenate them again and check if the modelRuns are matching.
-    """
-    model_results_by_hp = {}
-    
-    # save the relevant hyperaparameters for configurations (exclude dependent parameters)
-    hyperparameters = [hyperparameter for hyperparameter in hp_search_space.keys()\
-                       if not "cardinality" in hyperparameter]
-
-    # determine all possible combinations within the grid set up by combinatios of unique values
-    hp_grid_combinations = list(itertools.product(*[list(df["config/"+hp].unique()) for hp in hyperparameters]))
-
-    # build up an index out of the combination that is true for every value
-    for hp_grid_combination in hp_grid_combinations:
-        # determine the index that combines the hp configuration
-        index_list = [df["config/"+k] ==v for k,v in zip(hyperparameters, hp_grid_combination)]
-        combined_index = np.logical_and.reduce(index_list)
-        # filter and combine the results for the combination
-        df.loc[combined_index,"shape"] = df.loc[combined_index,].shape[0]
-        df.loc[combined_index,"model_WIS_variance"] = df.loc[combined_index,"mean_WIS"].var()
-        df.loc[combined_index,"model_WIS_sd"] = np.sqrt(df.loc[combined_index,"mean_WIS"].var())
-        df.loc[combined_index,"model_WIS_mean"] = df.loc[combined_index,"mean_WIS"].mean()
-        df.loc[combined_index,"model_WIS_median"] = df.loc[combined_index,"mean_WIS"].median()
-        df.loc[combined_index,"model_time_variance"] = df.loc[combined_index,"time_total_s"].var()
-        df.loc[combined_index,"model_time_sd"] = np.sqrt(df.loc[combined_index,"time_total_s"].var())
-        df.loc[combined_index,"model_time_mean"] = df.loc[combined_index,"time_total_s"].mean()
-        df.loc[combined_index,"model_time_median"] = df.loc[combined_index,"time_total_s"].median()
-        model_results_by_hp[str(hp_grid_combination)] = df[combined_index]
-        
-    overall_df = pd.DataFrame()
-    for key in list(model_results_by_hp.keys())[:]:
-        overall_df = pd.concat([overall_df, model_results_by_hp[key]])
-
-    modelruns_per_combination = pd.DataFrame(overall_df["shape"].value_counts())
-    modelruns_per_combination.index.names = ["modelruns_per_combination"]
-    modelruns_per_combination.rename(columns = {'shape':'total_modelruns'}, inplace = True)
-    modelruns_per_combination['independent_combinations'] = modelruns_per_combination['total_modelruns'] / modelruns_per_combination.index
-    if len(modelruns_per_combination)>1:
-        print("There are combinations with fewer modelRuns!!")
-    print(modelruns_per_combination)
-    return model_results_by_hp, overall_df
