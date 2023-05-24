@@ -67,13 +67,15 @@ def print_forecasts_by_week(config, df, forecasts_dict, locations, week_ahead_li
                 
 
 
-def plot_coverage(config, evaluator_df_dict, locations=None):
+def plot_coverage(config, evaluator_df_dict, locations=None, colors=None):
     """
     Given a dictionary, where the values consist of evaluation_df's, this function is going to create plots of the 4 different week-ahead coverages.  
     However, the weekly performances have to be under the "item_id" with f.e. "aggregated {1}" for the 1 week-ahead metrics.
     """
     week_coverage_dict = {}
     coverage_columns = [col for col in evaluator_df_dict[list(evaluator_df_dict.keys())[0]].columns if "Coverage" in col]
+    if colors==None:
+        colors = config.colors
     if "MAE_Coverage" in coverage_columns:
         coverage_columns.remove("MAE_Coverage")
     fig, axs = plt.subplots(nrows=2, ncols=2, figsize=(16, 9))
@@ -86,11 +88,11 @@ def plot_coverage(config, evaluator_df_dict, locations=None):
             plotnumber = (0, 1)
         if week == 4:
             plotnumber = (1, 1)
+        axs[plotnumber].plot([0.0, 1.0], [0.0, 1.0], c=config.colors[0])
         for key in evaluator_df_dict.keys():
+            axs[plotnumber].scatter(config.quantiles, evaluator_df_dict[key].loc[evaluator_df_dict[key].item_id.isin(["aggregated {" + f"{week}" + "}"]), coverage_columns], c=colors[list(evaluator_df_dict.keys()).index(key)+1])
             week_coverage_dict[week] = evaluator_df_dict[key].loc[evaluator_df_dict[key].item_id.isin(["aggregated {"+ f"{week}" + "}"]), coverage_columns]
-            axs[plotnumber].plot([0.0, 1.0], [0.0, 1.0], c= config.colors[0])
-            axs[plotnumber].scatter(config.quantiles, evaluator_df_dict[key].loc[evaluator_df_dict[key].item_id.isin(["aggregated {" + f"{week}" + "}"]), coverage_columns], c=config.colors[0])
-            axs[plotnumber].plot(config.quantiles, evaluator_df_dict[key].loc[evaluator_df_dict[key].item_id.isin(["aggregated {" + f"{week}" + "}"]), coverage_columns].T, label=f"{key}", c=config.colors[list(evaluator_df_dict.keys()).index(key)+1])
+            axs[plotnumber].plot(config.quantiles, evaluator_df_dict[key].loc[evaluator_df_dict[key].item_id.isin(["aggregated {" + f"{week}" + "}"]), coverage_columns].T, label=f"{key}", c=colors[list(evaluator_df_dict.keys()).index(key)+1])
             axs[plotnumber].title.set_text(f"{week}-Week Ahead Coverage")
             axs[plotnumber].legend()
             
@@ -273,12 +275,12 @@ def plot_forecast_entry(config, fe, show_mean=False, ax=plt, prediction_interval
             )
             # Hack to create labels for the error intervals. Doesn't actually
             # plot anything, because we only pass a single data point
-            pd.Series(data=fe["0.5"].tolist()[:1], index=fe["date"].tolist()[:1]).plot(
-                color=fillcolor,
-                alpha=alpha,
-                linewidth=10,
-                label=f"{100 - ptile * 2}%",
-            )
+            #pd.Series(data=fe["0.5"].tolist()[:1], index=fe["date"].tolist()[:1]).plot(
+             #   color=fillcolor,
+              #  alpha=alpha,
+               # linewidth=10,
+                #label=f"{100 - ptile * 2}%",
+           # )
         else:
             plt.fill_between(
                 fe.index,

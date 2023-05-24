@@ -238,3 +238,109 @@ def make_one_ts_prediction(config, df, location="LK Bad Dürkheim"):
     plt.grid(which="both")
     plt.show()
     return forecasts, tss
+
+# Functions for the R_Forecasts
+
+def process_R_results(config, results_df, influenza_df):
+    '''
+    Process the results_df by adding a date column and the corresponding true values.
+    '''
+    df = results_df.copy()
+    # Split the values in the Time column saved as 822.1, 823.2,... as Time : 822, 823, ... and WeekAhead: 1, 2, ...
+    df['Time'] = df['Time'].astype(str)
+    df[['Time', 'WeekAhead']] = df['Time'].str.split('.', 1, expand=True)
+
+    # Convert columns to appropriate types i.e., integer
+    df['Time'] = df['Time'].astype(int)
+    df['WeekAhead'] = df['WeekAhead'].astype(int)
+    
+    # The dates in the R representation of the influenza df are shifted by 1 position, example for SK München:
+    # 821          0 2016-09-25
+    # 822          0 2016-10-02
+    # ...
+    # 929          2 2018-10-21
+    R_start = datetime(2016, 10, 2)
+    R_end = datetime(2018, 10, 21)
+    # determine the daterange of the forecast period
+    daterange = pd.date_range(start=R_start, periods=len(results_df.Time.unique()),freq=config.parameters["freq"])
+    influenza_df["date"] = pd.to_datetime(influenza_df["date"])
+    # Iterate over the zipped pairs of time and date e.g., [(821,2016-09-25), ..., (929,2018-10-21)]  
+    for i in zip(df.Time.unique(), daterange): 
+        df.loc[df.Time == i[0], "date"] = i[1]
+        
+    df["date"] = pd.to_datetime(df["date"])
+    
+    # rename the location column so it matches with the influenza location columnname
+    df.rename(columns = {'Location':'location'}, inplace = True)
+    df = df.merge(influenza_df[["date", "value", "location"]], on = ["date", "location"]) 
+    df.rename(columns = {'value':'true_value'}, inplace = True)
+    
+    # truncate the predictions to lie within the same date range
+    start_date = df.loc[df["WeekAhead"]==4,"date"].min()
+    end_date = df.loc[df["WeekAhead"]==1,"date"].max()
+    # the gluonts models only have a one week ahead forecast up to 98 data points
+    # therefore set the start and the length to equal the gluonts model period
+    end_date = pd.date_range(start=start_date, freq=config.parameters["freq"], periods=98)[-1:][0]
+    df = df.loc[(df["date"]>=start_date) & (df["date"]<=end_date)]
+    return df
+
+def quantile_loss(target: np.ndarray, forecast: np.ndarray, q: float) -> float:
+    r"""
+    .. math::
+
+        quantile\_loss = 2 * sum(|(Y - \hat{Y}) * (Y <= \hat{Y}) - q|)
+    """
+    return 2 * np.sum(np.abs((forecast - target) * ((target <= forecast) - q)))
+
+def coverage(target: np.ndarray, forecast: np.ndarray) -> float:
+    r"""
+    .. math::
+
+        coverage = mean(Y <= \hat{Y})
+    """
+    return np.mean(target <= forecast)
+
+def abs_target_sum(target) -> float:
+    r"""
+    .. math::
+
+        abs\_target\_sum = sum(|Y|)
+    """
+    return np.sum(np.abs(target))
+
+def evaluate_R_forecasts(config, df_dict, locations, processed_df):
+    evaluator_df = pd.DataFrame({"item_id":["aggregated {" + f"{week}" + "}" for week in [1, 2, 3, 4]]+[f"{location} "+ "{" + f"{week}" + "}" for location in locations for week in [1,2,3,4]]})
+    # determine the metrics for individual series
+    for week_ahead in [1, 2, 3, 4]:
+        print(f"Evaluating {week_ahead}/4 -- {datetime.now()}")
+        df = df_dict[week_ahead].copy()
+        for quantile in config.quantiles:
+            for location in locations:
+                # calculate the Quantile Loss and the Coverage for each region
+                evaluator_df.loc[evaluator_df.item_id == str(f"{location} "+ "{" + f"{week_ahead}" + "}"),f"QuantileLoss[{quantile}]"] =\
+                    quantile_loss(df.loc[df["location"]==location, "true_value"], df.loc[df["location"]==location, f"{quantile}"], quantile)
+                
+                evaluator_df.loc[evaluator_df.item_id == str(f"{location} "+ "{" + f"{week_ahead}" + "}"),f"Coverage[{quantile}]"] =\
+                    coverage(df.loc[df["location"]==location, "true_value"], df.loc[df["location"]==location, f"{quantile}"])
+
+            evaluator_df.loc[evaluator_df.item_id == str("aggregated {" + f"{week_ahead}" + "}"),f"QuantileLoss[{quantile}]"] =\
+                quantile_loss(df["true_value"], df[f"{quantile}"], quantile)
+            
+            evaluator_df.loc[evaluator_df.item_id == str("aggregated {" + f"{week_ahead}" + "}"),f"Coverage[{quantile}]"] =\
+                coverage(df["true_value"], df[f"{quantile}"])
+            
+    # add the aggregate metrics
+    evaluator_df["abs_target_sum"] = abs_target_sum(processed_df["true_value"])
+    #for week_ahead in [1,2,3,4]:
+    for quantile in config.quantiles:
+        evaluator_df[f"wQuantileLoss[{quantile}]"] = (evaluator_df[f"QuantileLoss[{quantile}]"] / evaluator_df["abs_target_sum"])
+    for item_id in evaluator_df.item_id.unique():   
+        df = evaluator_df[evaluator_df.item_id == item_id].copy()
+        df["mean_absolute_QuantileLoss"] = np.array([df[f"QuantileLoss[{quantile}]"] for quantile in config.quantiles]).mean()
+        df["mean_wQuantileLoss"] = np.array([df[f"wQuantileLoss[{quantile}]"]for quantile in config.quantiles]).mean()
+        df["MAE_Coverage"] = np.mean([np.abs(df[f"Coverage[{quantile}]"] - np.array([q]))for q in config.quantiles])    
+        evaluator_df.loc[evaluator_df.item_id == item_id, ["mean_absolute_QuantileLoss", "mean_wQuantileLoss", "MAE_Coverage"]] = df[["mean_absolute_QuantileLoss", "mean_wQuantileLoss", "MAE_Coverage"]]
+    # produce the average Quantile Loss metric by dividing the mean absolute QL through the number of involved locations per weekahead, which is usually 411 (each district)
+    included_locations = [item_id for item_id in evaluator_df.item_id.unique() if "aggregated" not in item_id if "1" in item_id]
+    evaluator_df.loc[evaluator_df.item_id.isin([item_id for item_id in evaluator_df.item_id if "aggregate" in item_id]), "mean_WIS"] = evaluator_df.loc[evaluator_df.item_id.isin([item_id for item_id in evaluator_df.item_id if "aggregate" in item_id]),"mean_absolute_QuantileLoss"]/len(included_locations)        
+    return evaluator_df
