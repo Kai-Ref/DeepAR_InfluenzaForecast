@@ -8,12 +8,13 @@ import gluonts
 from gluonts.mx import Trainer, DeepAREstimator
 from gluonts.dataset.common import ListDataset
 from gluonts.dataset.pandas import PandasDataset
-from gluonts.evaluation import make_evaluation_predictions, Evaluator
+from gluonts.evaluation import make_evaluation_predictions#, Evaluator
 from gluonts.dataset.split import split, TestData
 from gluonts.dataset.util import to_pandas
 import os
 os.chdir('/home/reffert/DeepAR_InfluenzaForecast')
 from PythonFiles.rolling_dataset import generate_rolling_dataset,StepStrategy
+from PythonFiles.OverwrittenEvaluator import Evaluator, strict_coverage
 
 def preprocessing(config, df, check_count=False, output_type="PD"):
     """
@@ -322,12 +323,16 @@ def evaluate_R_forecasts(config, df_dict, locations, processed_df):
                 
                 evaluator_df.loc[evaluator_df.item_id == str(f"{location} "+ "{" + f"{week_ahead}" + "}"),f"Coverage[{quantile}]"] =\
                     coverage(df.loc[df["location"]==location, "true_value"], df.loc[df["location"]==location, f"{quantile}"])
+                evaluator_df.loc[evaluator_df.item_id == str(f"{location} "+ "{" + f"{week_ahead}" + "}"),f"StrictCoverage[{quantile}]"] =\
+                    strict_coverage(df.loc[df["location"]==location, "true_value"], df.loc[df["location"]==location, f"{quantile}"])
 
             evaluator_df.loc[evaluator_df.item_id == str("aggregated {" + f"{week_ahead}" + "}"),f"QuantileLoss[{quantile}]"] =\
                 quantile_loss(df["true_value"], df[f"{quantile}"], quantile)
             
             evaluator_df.loc[evaluator_df.item_id == str("aggregated {" + f"{week_ahead}" + "}"),f"Coverage[{quantile}]"] =\
                 coverage(df["true_value"], df[f"{quantile}"])
+            evaluator_df.loc[evaluator_df.item_id == str("aggregated {" + f"{week_ahead}" + "}"),f"StrictCoverage[{quantile}]"] =\
+                strict_coverage(df["true_value"], df[f"{quantile}"])
             
     # add the aggregate metrics
     evaluator_df["abs_target_sum"] = abs_target_sum(processed_df["true_value"])
@@ -338,8 +343,9 @@ def evaluate_R_forecasts(config, df_dict, locations, processed_df):
         df = evaluator_df[evaluator_df.item_id == item_id].copy()
         df["mean_absolute_QuantileLoss"] = np.array([df[f"QuantileLoss[{quantile}]"] for quantile in config.quantiles]).mean()
         df["mean_wQuantileLoss"] = np.array([df[f"wQuantileLoss[{quantile}]"]for quantile in config.quantiles]).mean()
-        df["MAE_Coverage"] = np.mean([np.abs(df[f"Coverage[{quantile}]"] - np.array([q]))for q in config.quantiles])    
-        evaluator_df.loc[evaluator_df.item_id == item_id, ["mean_absolute_QuantileLoss", "mean_wQuantileLoss", "MAE_Coverage"]] = df[["mean_absolute_QuantileLoss", "mean_wQuantileLoss", "MAE_Coverage"]]
+        df["MAE_Coverage"] = np.mean([np.abs(df[f"Coverage[{quantile}]"] - np.array([q]))for q in config.quantiles])   
+        df["MAE_StrictCoverage"] = np.mean([np.abs(df[f"StrictCoverage[{quantile}]"] - np.array([q]))for q in config.quantiles]) 
+        evaluator_df.loc[evaluator_df.item_id == item_id, ["mean_absolute_QuantileLoss", "mean_wQuantileLoss", "MAE_Coverage", "MAE_StrictCoverage"]] = df[["mean_absolute_QuantileLoss", "mean_wQuantileLoss", "MAE_Coverage", "MAE_StrictCoverage"]]
     # produce the average Quantile Loss metric by dividing the mean absolute QL through the number of involved locations per weekahead, which is usually 411 (each district)
     included_locations = [item_id for item_id in evaluator_df.item_id.unique() if "aggregated" not in item_id if "1" in item_id]
     evaluator_df.loc[evaluator_df.item_id.isin([item_id for item_id in evaluator_df.item_id if "aggregate" in item_id]), "mean_WIS"] = evaluator_df.loc[evaluator_df.item_id.isin([item_id for item_id in evaluator_df.item_id if "aggregate" in item_id]),"mean_absolute_QuantileLoss"]/len(included_locations)        

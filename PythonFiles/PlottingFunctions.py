@@ -67,13 +67,18 @@ def print_forecasts_by_week(config, df, forecasts_dict, locations, week_ahead_li
                 
 
 
-def plot_coverage(config, evaluator_df_dict, locations=None, colors=None):
+def plot_coverage(config, evaluator_df_dict, locations=None, colors=None, strict=False):
     """
     Given a dictionary, where the values consist of evaluation_df's, this function is going to create plots of the 4 different week-ahead coverages.  
     However, the weekly performances have to be under the "item_id" with f.e. "aggregated {1}" for the 1 week-ahead metrics.
     """
     week_coverage_dict = {}
-    coverage_columns = [col for col in evaluator_df_dict[list(evaluator_df_dict.keys())[0]].columns if "Coverage" in col]
+    coverage_columns = [col for col in evaluator_df_dict[list(evaluator_df_dict.keys())[0]].columns if ("Coverage" in col)&("Strict" not in col)]
+    if strict:
+        week_strict_coverage_dict = {}
+        strict_coverage_columns = [col for col in evaluator_df_dict[list(evaluator_df_dict.keys())[0]].columns if "StrictCoverage" in col]
+        if "MAE_StrictCoverage" in strict_coverage_columns:
+            strict_coverage_columns.remove("MAE_StrictCoverage")
     if colors==None:
         colors = config.colors
     if "MAE_Coverage" in coverage_columns:
@@ -93,6 +98,10 @@ def plot_coverage(config, evaluator_df_dict, locations=None, colors=None):
             axs[plotnumber].scatter(config.quantiles, evaluator_df_dict[key].loc[evaluator_df_dict[key].item_id.isin(["aggregated {" + f"{week}" + "}"]), coverage_columns], c=colors[list(evaluator_df_dict.keys()).index(key)+1])
             week_coverage_dict[week] = evaluator_df_dict[key].loc[evaluator_df_dict[key].item_id.isin(["aggregated {"+ f"{week}" + "}"]), coverage_columns]
             axs[plotnumber].plot(config.quantiles, evaluator_df_dict[key].loc[evaluator_df_dict[key].item_id.isin(["aggregated {" + f"{week}" + "}"]), coverage_columns].T, label=f"{key}", c=colors[list(evaluator_df_dict.keys()).index(key)+1])
+            if strict:
+                axs[plotnumber].scatter(config.quantiles, evaluator_df_dict[key].loc[evaluator_df_dict[key].item_id.isin(["aggregated {" + f"{week}" + "}"]), strict_coverage_columns], c=colors[list(evaluator_df_dict.keys()).index(key)+1])
+                week_strict_coverage_dict[week] = evaluator_df_dict[key].loc[evaluator_df_dict[key].item_id.isin(["aggregated {"+ f"{week}" + "}"]), strict_coverage_columns]
+                axs[plotnumber].plot(config.quantiles, evaluator_df_dict[key].loc[evaluator_df_dict[key].item_id.isin(["aggregated {" + f"{week}" + "}"]), strict_coverage_columns].T, c=colors[list(evaluator_df_dict.keys()).index(key)+1])
             axs[plotnumber].title.set_text(f"{week}-Week Ahead Coverage")
             axs[plotnumber].legend()
             
