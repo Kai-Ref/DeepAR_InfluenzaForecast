@@ -3,6 +3,7 @@ from ray import tune, air
 from ray.air import session
 from ray.tune import ResultGrid
 from PythonFiles.model import model, preprocessing, split_forecasts_by_week, forecast_by_week, train_test_split
+from PythonFiles.Configuration import Configuration
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
@@ -10,13 +11,14 @@ from datetime import datetime
 from gluonts.mx import Trainer, DeepAREstimator
 from gluonts.mx.model.simple_feedforward import SimpleFeedForwardEstimator
 from gluonts.evaluation import make_evaluation_predictions, Evaluator
+import os
+import itertools
 
-def get_data(truncate=False, with_features=True):
-    import os
+
+def get_data(truncate=False, with_features=True, config=None):
     os.chdir('/home/reffert/DeepAR_InfluenzaForecast')
-    from PythonFiles.Configuration import Configuration
-    from PythonFiles.model import train_test_split, preprocessing
-    config = Configuration()
+    if config == None:
+        config = Configuration()
     # import the data
     influenza_df = pd.read_csv("/home/reffert/DeepAR_InfluenzaForecast/Notebooks/DataProcessing/influenza.csv", sep=',')
     population_df = pd.read_csv("/home/reffert/DeepAR_InfluenzaForecast/Notebooks/DataProcessing/PopulationVector.csv", sep=',')
@@ -153,6 +155,7 @@ def restore_HP_results(experiment_path, objective, train, test, configuration):
     restored_tuner = tune.Tuner.restore(experiment_path, trainable=tune.with_parameters(objective, train=train, test=test, configuration=configuration))
     result_grid = restored_tuner.get_results()
     results_df = result_grid.get_dataframe()
+    ray.shutdown()
     return results_df
 
 

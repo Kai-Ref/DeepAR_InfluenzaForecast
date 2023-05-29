@@ -175,8 +175,7 @@ def hyperparameter_boxplots(results_df, hp_search_space, col="mean_WIS"):
     for key in hp_search_space.keys():
         if type(hp_search_space[key]) == type(dict()):
             search_grid = hp_search_space[key][list(hp_search_space[key].keys())[0]]
-            hp_plots[key] = {"cols" : [f"{i} {key}" for i in search_grid], "df": [results_df.loc[results_df[f'config/{key}']==str(i), col] if (type(i)==type(list())) else results_df.loc[results_df[f'config/{key}']==i, col] for i in search_grid]} # the if i == list is necessary for the num_hidden_layers of the FNN
-    
+            hp_plots[key] = {"cols" : [f"{i} {key}" for i in search_grid], "df": [results_df.loc[results_df[f'config/{key}'].apply(lambda x: x == tuple(i)), col] if (isinstance(i, list)) else results_df.loc[results_df[f'config/{key}']==i, col] for i in search_grid]} # the if isinstance is necessary for the num_hidden_layers of the FNN
     # plot the boxplots
     nrows = int(len(hp_plots.keys())/2) + int(len(hp_plots.keys())%2)
     fig, axs = plt.subplots(nrows=nrows, ncols=2, figsize=(16, 9), sharey=True)
