@@ -57,7 +57,7 @@ def print_forecasts_by_week(config, df, forecasts_dict, locations, week_ahead_li
                     forecast_entry = forecast_dict[list(forecast_dict.keys())[week_ahead-1]][all_locations.index(location)]
                     plot_forecast_entry(config, forecast_entry, show_mean=False,ax=ax[tuple(plotnumber)], mediancolor=config.colors[1],fillcolor=config.colors[2], axis=True, prediction_intervals=(50.0, 80.0))
                     #forecast_entry.plot(prediction_intervals=prediction_intervals, color=config.colors[0])
-                plt.xticks([plot_start_time, datetime(2017,1,1), datetime(2018,1,1), config.test_end_time], rotation=0, ha="center")
+                plt.xticks([config.train_end_time, config.test_end_time], rotation=0, ha="center")
                 plt.legend(loc="upper left")
             if (savepath != None)&(filename!=None):
                 os.chdir(savepath)
