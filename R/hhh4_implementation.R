@@ -38,7 +38,7 @@ print(df_sts)
 
 ?hhh4
 
-?sts
+?ri
 
 ## Here we fit the improved power-law model of Meyer and Held (2014)
 
@@ -73,7 +73,10 @@ f.end <- addSeason2formula(
 
 nbOrder1 <- neighbourhood(df_sts)
 
+?nbOrder
+
 neighbourhood(df_sts) <- nbOrder(nbOrder1, 15) + 1
+print(nbOrder(nbOrder1, 15) + 1)
 ## JB: I added plus one here so we can subsume the AR in the NE component
 ## i.e., we treat the same region now as if it was a direct neighbour, the direct neighbours
 ## as if they were second-order neighbours etc. This removes quite a few parameters and in my
@@ -82,6 +85,7 @@ neighbourhood(df_sts) <- nbOrder(nbOrder1, 15) + 1
 
 plot(df_sts, unit = 9)
 
+?W_powerlaw
 ## full model specification
 
 fluModel <- list(

@@ -10,6 +10,7 @@ population_vector <- read.csv("Notebooks/DataProcessing/PopulationVector.csv",
 
 df <- pivot_wider(data[c('value', 'date', 'location')], names_from = location, values_from = value)
 print(df[1:4,"date"])
+print(df[(train_length):(test_length+4),c("SK München","date")])
 
 
 # Filter the DataFrame for dates before '30.09.2016'
@@ -21,6 +22,7 @@ df_sts <-sts(as.matrix(subset(df, select=-c(date))),
              start = c(2001, 1) , frequency = 52,# maybe take len(df)/years here or 52.25
              neighbourhood = as.matrix(adjacentMatrix),
              population = as.vector(t(population_vector)))
+?addSeason2formula
 
 plot(df_sts[1:train_length], type = observed ~ time)
 
@@ -78,7 +80,7 @@ plot(simData, unit=411)
 
 library(hhh4addon)
 
-vignette("hhh4addon")
+vignette("hhh4")
 vignette("hhh4_spacetime")
 
 results <- list()
@@ -88,40 +90,35 @@ for (t_condition in (train_length):(test_length)){
   print(t_condition)
 }
 
-
-
-variable_names <- names(results[[1]])
-
-results_df <- data.frame(matrix(ncol = length(variable_names), nrow = 0))
-colnames(results_df) <- variable_names
-
-for (sublist in results) {
-  results_df <- rbind(results_df, do.call(rbind, sublist))
-}
-
-write.csv(results_df, file = "results.csv", row.names = FALSE)
-
-print(results[[1]]$mu_matrix[, "LK Karlsruhe"])
-print(colnames(results_df))
-
 regions <- unique(data$location)
+combined_df <- data.frame()
+for (region in regions){
+  i<-1
+  print(region)
+  region_df <- data.frame(matrix(nrow = 0, ncol = 9, dimnames = list(NULL, c("Time",0.025, 0.1, 0.25, 0.5, 0.75, 0.9, 0.975, "Location"))), stringsAsFactors = FALSE)
+  colnames(region_df) <- sub("^X", "", colnames(region_df))
+  for (path_forecast in results){
+      # determine the distribution parameters for each region and path_forecast
+      mu <- path_forecast$mu_matrix[, region]
+      sigma2 <- path_forecast$var_matrix[, region]
+      size <- pmin(abs(mu / (sigma2 / mu - 1)), 10000)
+      # determine quantiles from the distribution parameters
+      for (t in 1:4){
+        time_point <-as.numeric(sub("^t=", "", names(mu[t])))
+        rowname <- sprintf("%s.%s",  time_point,t)
+        quantiles <- qnbinom(p = c(0.025, 0.1, 0.25, 0.5, 0.75, 0.9, 0.975), 
+                mu = mu[t], size = size[t])
+        region_df[i, ] <- c(rowname, quantiles, region)
+        i<-i+1
+      }
+  }
+  # Concatenate the regional data frame with the combined data frame
+  combined_df <- rbind(combined_df, region_df)
+}
+print(combined_df)
+write.csv(combined_df, file = "C:/Users/555ka/Coding/GIT-Projects/DeepAR_InfluenzaForecast/DeepAR_InfluenzaForecast/R/results.csv", row.names = FALSE)
 
-for (region in regions[1]){
-  for (path_forecast in results[1]){
-    # determine the distribution parameters for each region and path_forecast
-    mu <- path_forecast$mu_matrix[, region]
-    sigma2 <- path_forecast$var_matrix[, region]
-    size <- pmin(abs(mu / (sigma2 / mu - 1)), 10000)
-    # determine quantiles from the distribution parameters
-    for (t in 1:4){
-      colnamer <- sprintf("%s WA _ %s", t, names(mu[t]))
-      print(colnamer)
-      quantiles <- qnbinom(p = c(0.025, 0.1, 0.25, 0.5, 0.75, 0.9, 0.975), 
-              mu = mu[t], size = size[t])
-      print(quantiles)
-    }
-}
-}
+
 
 
 
