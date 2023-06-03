@@ -3,6 +3,7 @@ import numpy as np
 import mxnet as mx
 import matplotlib.pyplot as plt
 from datetime import datetime
+import datetime as dt
 import itertools
 import gluonts
 from gluonts.mx import Trainer, DeepAREstimator
@@ -242,7 +243,7 @@ def make_one_ts_prediction(config, df, location="LK Bad Dürkheim"):
 
 # Functions for the R_Forecasts
 
-def process_R_results(config, results_df, influenza_df):
+def process_R_results(config, results_df, influenza_df, validation=False):
     '''
     Process the results_df by adding a date column and the corresponding true values.
     '''
@@ -260,7 +261,12 @@ def process_R_results(config, results_df, influenza_df):
     # 822          0 2016-10-02
     # ...
     # 929          2 2018-10-21
-    R_start = datetime(2016, 10, 2)
+    if validation:
+        R_start = datetime(2018, 10, 7)
+        window_length = 97
+    else:
+        R_start = datetime(2016, 10, 2) # first forecasted point
+        window_length = 98
     R_end = datetime(2018, 10, 21)
     # determine the daterange of the forecast period
     daterange = pd.date_range(start=R_start, periods=len(results_df.Time.unique()),freq=config.parameters["freq"])
@@ -281,7 +287,7 @@ def process_R_results(config, results_df, influenza_df):
     end_date = df.loc[df["WeekAhead"]==1,"date"].max()
     # the gluonts models only have a one week ahead forecast up to 98 data points
     # therefore set the start and the length to equal the gluonts model period
-    end_date = pd.date_range(start=start_date, freq=config.parameters["freq"], periods=98)[-1:][0]
+    end_date = pd.date_range(start=start_date, freq=config.parameters["freq"], periods=window_length)[-1:][0]
     df = df.loc[(df["date"]>=start_date) & (df["date"]<=end_date)]
     return df
 

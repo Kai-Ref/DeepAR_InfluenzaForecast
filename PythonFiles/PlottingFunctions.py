@@ -65,9 +65,64 @@ def print_forecasts_by_week(config, df, forecasts_dict, locations, week_ahead_li
                 os.chdir('/home/reffert/DeepAR_InfluenzaForecast')
             plt.show()
                 
+def side_by_side_print_forecasts_by_week(config, df, forecasts_dict, locations, week_ahead_list, plot_begin_at_trainstart=False, savepath=None, filename=None, figsize=(25, 20)):
+    '''
+    @Overwritten 
+    Prints out plots for the given week-Ahead forecasts of given locations. It needs the initial corrected dataframe, as well as the forecast_dict
+    that contains the different week-ahead forecasts.
+    The start of the plot time axis, can be set to the training start time (TRUE) or the testing start time (FALSE).
+    '''
+    if (savepath != None)&(filename!=None):
+        import os
+    all_locations=list(df.location.unique())
+    for week_ahead in week_ahead_list:
+        fig, ax = plt.subplots(len(locations), len(list(forecasts_dict.keys())), figsize=figsize)
+        fig.tight_layout(pad=2.9)
+        for location in locations:
+            for key in list(forecasts_dict.keys()):
+                row = locations.index(location)
+                column = list(forecasts_dict.keys()).index(key)
+                plotnumber = [row, column]
+                plt.sca(ax[tuple(plotnumber)])
+                plt.xticks(rotation=0)
+                plt.title(f'{key} - {location} - {week_ahead} Week Ahead Forecast')
+                
+                if plot_begin_at_trainstart == True:
+                    plot_start_time = config.train_start_time
+                elif type(plot_begin_at_trainstart)==type(datetime(2016,1,1,1,1,1)):
+                    plot_start_time = plot_begin_at_trainstart
+                else:
+                    plot_start_time = config.train_end_time
+                    
+                #first plot the time series as a whole (x-axis: Date, y-axis: influenza-values)
+                plt.plot((df.loc[(df['location'] == location) &
+                                        (df.index <= config.test_end_time) &
+                                        (df.index >= plot_start_time)].index),
+                         df.loc[(df['location'] == location) &
+                                       (df.index <= config.test_end_time) &
+                                       (df.index >= plot_start_time),'value'], c=config.colors[0])
+                #ax[tuple(plotnumber)].grid(which="both")
+                # run the overwritten version of the forecast_entry.plot() function to plot to a specific axis and change colors
+                forecast_dict = forecasts_dict[key] 
+                if key == "hhh4":
+                    # Here forecast_entry is a df
+                    forecast_entry = forecast_dict[list(forecast_dict.keys())[week_ahead-1]].copy()
+                    plot_forecast_entry(config, forecast_entry.loc[forecast_entry["location"]==location], show_mean=False, ax=ax[tuple(plotnumber)], mediancolor=config.colors[1], fillcolor=config.colors[2], axis=True,\
+                                        prediction_intervals=(50.0, 95.0), R_entry=True)
+                else:
+                    # select the right week-ahead forecast entry for a set location
+                    forecast_entry = forecast_dict[list(forecast_dict.keys())[week_ahead-1]][all_locations.index(location)]
+                    plot_forecast_entry(config, forecast_entry, show_mean=False,ax=ax[tuple(plotnumber)], mediancolor=config.colors[1],fillcolor=config.colors[2], axis=True, prediction_intervals=(50.0, 95.0))
+                    #forecast_entry.plot(prediction_intervals=prediction_intervals, color=config.colors[0])
+                plt.xticks([config.train_end_time, config.test_end_time], rotation=0, ha="center")
+                plt.legend(loc="upper left")
+        if (savepath != None)&(filename!=None):
+            os.chdir(savepath)
+            plt.savefig(f"{filename}Combined_{week_ahead}_WA.png")
+            os.chdir('/home/reffert/DeepAR_InfluenzaForecast')
+        plt.show()
 
-
-def plot_coverage(config, evaluator_df_dict, locations=None, colors=None, strict=False):
+def plot_coverage(config, evaluator_df_dict, colors=None, strict=False):
     """
     Given a dictionary, where the values consist of evaluation_df's, this function is going to create plots of the 4 different week-ahead coverages.  
     However, the weekly performances have to be under the "item_id" with f.e. "aggregated {1}" for the 1 week-ahead metrics.
@@ -175,7 +230,7 @@ def hyperparameter_boxplots(results_df, hp_search_space, col="mean_WIS"):
     for key in hp_search_space.keys():
         if type(hp_search_space[key]) == type(dict()):
             search_grid = hp_search_space[key][list(hp_search_space[key].keys())[0]]
-            hp_plots[key] = {"cols" : [f"{i} {key}" for i in search_grid], "df": [results_df.loc[results_df[f'config/{key}'].apply(lambda x: x == tuple(i)), col] if (isinstance(i, list)) else results_df.loc[results_df[f'config/{key}']==i, col] for i in search_grid]} # the if isinstance is necessary for the num_hidden_layers of the FNN
+            hp_plots[key] = {"cols" : [f"{i} {key}" for i in search_grid], "df": [results_df.loc[results_df[f'config/{key}'].apply(lambda x: x == tuple(str(i))), col] if (isinstance(i, list)) else results_df.loc[results_df[f'config/{key}']==i, col] for i in search_grid]} # the if isinstance is necessary for the num_hidden_layers of the FNN
     # plot the boxplots
     nrows = int(len(hp_plots.keys())/2) + int(len(hp_plots.keys())%2)
     fig, axs = plt.subplots(nrows=nrows, ncols=2, figsize=(16, 9), sharey=True)
