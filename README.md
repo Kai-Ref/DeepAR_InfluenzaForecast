@@ -21,7 +21,7 @@ The repository is organized as follows:
   - [`Modeltuning/`](#modeltuning):
   - [`OldNotebooks/`](#old-notebooks):
 - [`PythonFiles/`](#python-files): Python files that define important functionalities and are accessed continuosly by notebooks.
-- [`R/`](#R): R files of to train and produce forecasts of the hhh4 model.
+- [`R/`](#r): R files of to train and produce forecasts of the hhh4 model.
 
 
 ### HyperparameterFiles <a name="hyperparameter-files"></a>
@@ -31,7 +31,7 @@ The repository is organized as follows:
 ### Modeltuning <a name="modeltuning"></a>
 ### OldNotebooks <a name="old-notebooks"></a>
 ### PythonFiles <a name="python-files"></a>
-### R <a name="R"></a>
+### R <a name="r"></a>
 
 ## Modules and Code Segments
 
