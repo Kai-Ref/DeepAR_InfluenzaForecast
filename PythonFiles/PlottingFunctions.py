@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from datetime import datetime
 import itertools
 
-def print_forecasts_by_week(config, df, forecasts_dict, locations, week_ahead_list, plot_begin_at_trainstart=False, savepath=None, filename=None):
+def print_forecasts_by_week(config, df, forecasts_dict, locations, week_ahead_list, plot_begin_at_trainstart=False, savepath=None, filename=None, adjusted=False, figsize=(16,9)):
     '''
     @Overwritten 
     Prints out plots for the given week-Ahead forecasts of given locations. It needs the initial corrected dataframe, as well as the forecast_dict
@@ -18,7 +18,7 @@ def print_forecasts_by_week(config, df, forecasts_dict, locations, week_ahead_li
         forecast_dict = forecasts_dict[key] 
         for week_ahead in week_ahead_list:
             nrows = int(len(locations)/2) + int(len(locations)%2)
-            fig, ax = plt.subplots(nrows, 2, figsize=(16, 9))
+            fig, ax = plt.subplots(nrows, 2, figsize=figsize)
             fig.tight_layout(pad=2.9)
             plotnumber = [0, 0]
             for location in locations:
@@ -51,11 +51,11 @@ def print_forecasts_by_week(config, df, forecasts_dict, locations, week_ahead_li
                     # Here forecast_entry is a df
                     forecast_entry = forecast_dict[list(forecast_dict.keys())[week_ahead-1]].copy()
                     plot_forecast_entry(config, forecast_entry.loc[forecast_entry["location"]==location], show_mean=False, ax=ax[tuple(plotnumber)], mediancolor=config.colors[1], fillcolor=config.colors[2], axis=True,\
-                                        prediction_intervals=(50.0, 80.0), R_entry=True)
+                                        prediction_intervals=(50.0, 95.0), R_entry=True, adjusted=adjusted)
                 else:
                     # select the right week-ahead forecast entry for a set location
                     forecast_entry = forecast_dict[list(forecast_dict.keys())[week_ahead-1]][all_locations.index(location)]
-                    plot_forecast_entry(config, forecast_entry, show_mean=False,ax=ax[tuple(plotnumber)], mediancolor=config.colors[1],fillcolor=config.colors[2], axis=True, prediction_intervals=(50.0, 80.0))
+                    plot_forecast_entry(config, forecast_entry, show_mean=False,ax=ax[tuple(plotnumber)], mediancolor=config.colors[1],fillcolor=config.colors[2], axis=True, prediction_intervals=(50.0, 95.0), adjusted=adjusted)
                     #forecast_entry.plot(prediction_intervals=prediction_intervals, color=config.colors[0])
                 plt.xticks([config.train_end_time, config.test_end_time], rotation=0, ha="center")
                 plt.legend(loc="upper left")
@@ -108,11 +108,11 @@ def side_by_side_print_forecasts_by_week(config, df, forecasts_dict, locations, 
                     # Here forecast_entry is a df
                     forecast_entry = forecast_dict[list(forecast_dict.keys())[week_ahead-1]].copy()
                     plot_forecast_entry(config, forecast_entry.loc[forecast_entry["location"]==location], show_mean=False, ax=ax[tuple(plotnumber)], mediancolor=config.colors[1], fillcolor=config.colors[2], axis=True,\
-                                        prediction_intervals=(50.0, 95.0), R_entry=True)
+                                        prediction_intervals=(50.0, 95.0), R_entry=True, adjusted=adjusted)
                 else:
                     # select the right week-ahead forecast entry for a set location
                     forecast_entry = forecast_dict[list(forecast_dict.keys())[week_ahead-1]][all_locations.index(location)]
-                    plot_forecast_entry(config, forecast_entry, show_mean=False,ax=ax[tuple(plotnumber)], mediancolor=config.colors[1],fillcolor=config.colors[2], axis=True, prediction_intervals=(50.0, 95.0))
+                    plot_forecast_entry(config, forecast_entry, show_mean=False,ax=ax[tuple(plotnumber)], mediancolor=config.colors[1],fillcolor=config.colors[2], axis=True, prediction_intervals=(50.0, 95.0), adjusted=adjusted)
                     #forecast_entry.plot(prediction_intervals=prediction_intervals, color=config.colors[0])
                 plt.xticks([config.train_end_time, config.test_end_time], rotation=0, ha="center")
                 plt.legend(loc="upper left")
@@ -149,6 +149,8 @@ def plot_coverage(config, evaluator_df_dict, colors=None, strict=False):
         if week == 4:
             plotnumber = (1, 1)
         axs[plotnumber].plot([0.0, 1.0], [0.0, 1.0], c=config.colors[0])
+        axs[plotnumber].set_xlabel("Quantile level")
+        axs[plotnumber].set_ylabel("Coverage")
         for key in evaluator_df_dict.keys():
             axs[plotnumber].scatter(config.quantiles, evaluator_df_dict[key].loc[evaluator_df_dict[key].item_id.isin(["aggregated {" + f"{week}" + "}"]), coverage_columns], c=colors[list(evaluator_df_dict.keys()).index(key)+1])
             week_coverage_dict[week] = evaluator_df_dict[key].loc[evaluator_df_dict[key].item_id.isin(["aggregated {"+ f"{week}" + "}"]), coverage_columns]
@@ -278,7 +280,7 @@ def hp_color_plot(config, overall_df, hp_search_space, x_axis="model_WIS_mean", 
     plt.show()
     
     
-def plot_forecast_entry(config, fe, show_mean=False, ax=plt, prediction_intervals=(50.0, 80.0), meancolor=None, mediancolor=None, fillcolor=None, axis=False, R_entry=False):
+def plot_forecast_entry(config, fe, show_mean=False, ax=plt, prediction_intervals=(50.0, 80.0), meancolor=None, mediancolor=None, fillcolor=None, axis=False, R_entry=False, adjusted=False):
     '''
     Overwritten version of the forecast_entry.plot() method.
     Includes customizable colors and axis.
@@ -345,8 +347,15 @@ def plot_forecast_entry(config, fe, show_mean=False, ax=plt, prediction_interval
                 #label=f"{100 - ptile * 2}%",
            # )
         else:
+            if adjusted:
+                # adjust for the week shift caused by the discrepancy of plt.fill_between() and pd.Series.plot() 
+                new_index = []
+                for ind in fe.index:
+                    new_index.append(ind.to_timestamp())
+            else:
+                new_index = fe.index
             plt.fill_between(
-                fe.index,
+                new_index,
                 ps_data[i],
                 ps_data[-i - 1],
                 facecolor=fillcolor,
