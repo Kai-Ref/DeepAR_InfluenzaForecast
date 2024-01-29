@@ -1,5 +1,6 @@
 library(tidyr)
 library(surveillance)
+citation(package="surveillance")
 
 setwd("C:/Users/555ka/Coding/GIT-Projects/DeepAR_InfluenzaForecast/DeepAR_InfluenzaForecast")
 data <- read.csv("Notebooks/DataProcessing/influenza.csv")
@@ -11,12 +12,14 @@ population_vector <- read.csv("Notebooks/DataProcessing/PopulationVector.csv",
 df <- pivot_wider(data[c('value', 'date', 'location')], names_from = location, values_from = value)
 print(df[1:4,"date"])
 # Filter the DataFrame for dates before '30.09.2016'
-train_length <- length(unique(df[df$date < as.Date("2018-09-30"), ]$date))
-test_length <- length(unique(df[df$date < as.Date("2020-09-30"), ]$date))
+train_length <- length(unique(df[df$date <= as.Date("2018-09-30"), ]$date))
+test_length <- length(unique(df[df$date <= as.Date("2020-09-30"), ]$date))
 
-print(df[(train_length):(test_length+4),c("SK München","date")])
-
-
+print(df[(train_length+1):(test_length+4),c("SK München","date")])
+print(df[(train_length-4):train_length+4,c("SK München","date")])
+print(df[(test_length-4):(test_length+4),c("SK München","date")])
+print(dim(df[0:train_length,c("SK München","date")]))
+print(df[1027,c("SK München","date")])
 
 df[is.na(df)] <- 0
 df_sts <-sts(as.matrix(subset(df, select=-c(date))),

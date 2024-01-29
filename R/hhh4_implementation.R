@@ -124,7 +124,7 @@ fluFit <- hhh4(df_sts, fluModel)
 
 summary(fluFit, idx2Exp = TRUE, amplitudeShift = TRUE)
 
-plot(fluFit, type = "fitted", total = TRUE)
+plot(fluFit, type = "fitted", total = FALSE)
 
 plot(fluFit, type = "season")
 
@@ -143,6 +143,9 @@ gridExtra::grid.arrange(
   nrow = 1, ncol = 3)
 
 plot(fluFit, type = "neweights", xlab = "adjacency order")
+
+plot(fluFit, units = 1, start=c(2015, 1), end=c(2016, 24), total=FALSE, decompose=FALSE)
+help("plot.hhh4")
 
 # one step ahead prediction:
 
